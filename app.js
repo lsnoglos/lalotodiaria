@@ -229,7 +229,10 @@ function cellClass(number, analysis) {
   const isDouble = number[0] === number[1];
   const isEven = Number(number) % 2 === 0;
 
-  if (analysis.noSalidos.includes(number)) return isEven ? "no-salido-par" : "no-salido-impar";
+  if (analysis.noSalidos.includes(number)) {
+    if (isDouble) return isEven ? "no-salido-doble-par" : "no-salido-doble-impar";
+    return isEven ? "no-salido-par" : "no-salido-impar";
+  }
   if (isDouble) return "salio-doble";
   if (analysis.invertidos.includes(number)) return "invertido";
   if (freq > 2) return "muy-repetido";
