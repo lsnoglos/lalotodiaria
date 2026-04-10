@@ -1,4 +1,4 @@
-const SOURCE_URL = "https://www.yelu.com.ni/lottery/results/diaria";
+const SOURCE_URL = "https://www.yelu.com.ni/lottery/results/history";
 const CACHE_KEY = "lotoData";
 const CACHE_TIME_KEY = "lotoDataUpdatedAt";
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -7,7 +7,7 @@ const HOURS = ["12PM", "3PM", "6PM", "9PM"];
 let appState = {
   data: [],
   analysis: null,
-  chart: null,
+  activeMonth: "",
 };
 
 const els = {
@@ -22,138 +22,132 @@ const els = {
   repeatedList: document.getElementById("repeatedList"),
   invertedList: document.getElementById("invertedList"),
   historyBody: document.getElementById("historyBody"),
-  frequencyChart: document.getElementById("frequencyChart"),
   accordionTemplate: document.getElementById("accordionTemplate"),
 };
 
-/**
- * Crea lista ["00", "01", ... "99"].
- */
-function getAllNumbers() {
-  return Array.from({ length: 100 }, (_, i) => String(i).padStart(2, "0"));
+function getCurrentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/**
- * Intenta obtener HTML directo; si CORS bloquea, usa proxys públicos de solo lectura.
- */
-async function fetchHtmlWithFallback() {
-  const endpoints = [
-    SOURCE_URL,
-    `https://r.jina.ai/http://www.yelu.com.ni/lottery/results/diaria`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(SOURCE_URL)}`,
-  ];
-
-  for (const endpoint of endpoints) {
-    try {
-      const response = await fetch(endpoint, { cache: "no-store" });
-      if (!response.ok) continue;
-      const html = await response.text();
-      if (html && html.includes("lotto_numbers")) return html;
-    } catch {
-      // Se ignora para continuar con fallback.
-    }
-  }
-
-  throw new Error("No fue posible descargar HTML del origen.");
+function monthNameEs(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const date = new Date(year, (month || 1) - 1, 1);
+  return date.toLocaleString("es-NI", { month: "long" });
 }
 
-/**
- * Extrae fecha desde encabezados próximos al bloque; fallback a fecha de hoy.
- */
-function detectDateForBlock(block, doc) {
-  const candidates = [];
-  let cursor = block.previousElementSibling;
-  let hops = 0;
-
-  while (cursor && hops < 8) {
-    const text = cursor.textContent?.trim();
-    if (text) candidates.push(text);
-    cursor = cursor.previousElementSibling;
-    hops += 1;
-  }
-
-  // Fallback: buscar títulos del documento.
-  candidates.push(doc.querySelector("h1")?.textContent || "");
-  candidates.push(doc.querySelector("title")?.textContent || "");
-
-  for (const candidate of candidates) {
-    const match = candidate.match(/(\d{4}-\d{2}-\d{2})/);
-    if (match) return match[1];
-
-    const dmy = candidate.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-    if (dmy) {
-      const [, dd, mm, yyyy] = dmy;
-      return `${yyyy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
-    }
-  }
-
-  return new Date().toISOString().slice(0, 10);
-}
-
-/**
- * Parsea HTML y devuelve [{fecha, hora, numero}].
- */
-function parseLotteryHtml(html) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
-  const blocks = [...doc.querySelectorAll("div.lotto_numbers")];
-  const rows = [];
-
-  blocks.forEach((block) => {
-    const fecha = detectDateForBlock(block, doc);
-    const items = [...block.children];
-
-    for (let i = 0; i < items.length; i += 1) {
-      const node = items[i];
-      if (!node.classList.contains("lotto_no_time")) continue;
-
-      const horaRaw = (node.textContent || "").replace(/\s+/g, "").toUpperCase();
-      if (!HOURS.includes(horaRaw)) continue;
-
-      const digits = [];
-      let j = i + 1;
-      while (j < items.length && !items[j].classList.contains("lotto_no_time")) {
-        if (items[j].classList.contains("lotto_no_r")) {
-          const text = (items[j].textContent || "").trim();
-          if (/^\d$/.test(text)) digits.push(text);
-          else if (/^\d{2}$/.test(text) && digits.length === 0) {
-            digits.push(text[0], text[1]);
-          }
-          // Ignora JG, 2X, 5X, etc.
-        }
-        j += 1;
-      }
-
-      if (digits.length >= 2) {
-        rows.push({
-          fecha,
-          hora: horaRaw,
-          numero: `${digits[0]}${digits[1]}`,
-        });
-      }
-    }
-  });
-
-  return rows
-    .filter((r) => /^\d{2}$/.test(r.numero))
-    .sort((a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`));
-}
-
-function loadFromCache() {
+function loadFromCache(monthKey) {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     const timestamp = Number(localStorage.getItem(CACHE_TIME_KEY) || 0);
     if (!raw || Date.now() - timestamp > CACHE_TTL_MS) return null;
+
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : null;
+    if (!parsed || parsed.month !== monthKey || !Array.isArray(parsed.data)) return null;
+    return parsed.data;
   } catch {
     return null;
   }
 }
 
-function saveToCache(data) {
-  localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+function saveToCache(monthKey, data) {
+  localStorage.setItem(CACHE_KEY, JSON.stringify({ month: monthKey, data }));
   localStorage.setItem(CACHE_TIME_KEY, String(Date.now()));
+}
+
+async function fetchHistoryHtml(monthKey) {
+  const body = new URLSearchParams({
+    _method: "POST",
+    "data[Lottery][name]": "Loto Diaria",
+    "data[Lottery][date]": monthKey,
+  });
+
+  const direct = await fetch(SOURCE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+    cache: "no-store",
+  });
+
+  if (!direct.ok) {
+    throw new Error(`No se pudo consultar historial mensual (HTTP ${direct.status}).`);
+  }
+
+  const html = await direct.text();
+  if (!html.includes("Loto Nicaragua Números Ganadores Anteriores")) {
+    throw new Error("La respuesta no contiene la tabla histórica esperada.");
+  }
+
+  return html;
+}
+
+function normalizeHour(value) {
+  const hour = (value || "").replace(/\s+/g, "").toUpperCase();
+  return HOURS.includes(hour) ? hour : "";
+}
+
+function parseSpanishDate(value) {
+  const cleaned = value.replace(/\s+/g, " ").trim();
+  const match = cleaned.match(/(\d{1,2})\s+de\s+([A-Za-zÁÉÍÓÚáéíóúñÑ]+)\s+(\d{4})/i);
+  if (!match) return "";
+
+  const months = {
+    enero: "01",
+    febrero: "02",
+    marzo: "03",
+    abril: "04",
+    mayo: "05",
+    junio: "06",
+    julio: "07",
+    agosto: "08",
+    septiembre: "09",
+    setiembre: "09",
+    octubre: "10",
+    noviembre: "11",
+    diciembre: "12",
+  };
+
+  const day = String(Number(match[1])).padStart(2, "0");
+  const month = months[match[2].toLowerCase()];
+  const year = match[3];
+
+  return month ? `${year}-${month}-${day}` : "";
+}
+
+function parseLotteryHtml(html, monthKey) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const rows = [];
+
+  doc.querySelectorAll("table tr").forEach((tr) => {
+    const tds = tr.querySelectorAll("td");
+    if (tds.length < 3) return;
+
+    const fecha = parseSpanishDate(tds[0].textContent || "");
+    if (!fecha || !fecha.startsWith(monthKey)) return;
+
+    const hora = normalizeHour(tds[1].querySelector("sup")?.textContent || "");
+    if (!hora) return;
+
+    const digits = [...tds[2].querySelectorAll(".lotto_no_r")]
+      .map((node) => (node.textContent || "").trim())
+      .filter((v) => /^\d$/.test(v));
+
+    if (digits.length >= 2) {
+      rows.push({
+        fecha,
+        hora,
+        numero: `${digits[0]}${digits[1]}`,
+      });
+    }
+  });
+
+  return rows.sort((a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`));
+}
+
+/** Crea lista ["00", ... "99"]. */
+function getAllNumbers() {
+  return Array.from({ length: 100 }, (_, i) => String(i).padStart(2, "0"));
 }
 
 function analyzeData(data) {
@@ -181,20 +175,6 @@ function analyzeData(data) {
     allNumbers.map((n) => [n, lastSeen[n] === -1 ? totalDraws : totalDraws - 1 - lastSeen[n]])
   );
 
-  const pyramids = data.map((d) => ({
-    ...d,
-    suma: Number(d.numero[0]) + Number(d.numero[1]),
-  }));
-
-  const recent = data.slice(-20).map((d) => d.numero);
-  const cruces = new Set();
-  for (let i = 0; i < recent.length - 1; i += 1) {
-    const a = recent[i];
-    const b = recent[i + 1];
-    cruces.add(`${a[0]}${b[1]}`);
-    cruces.add(`${b[0]}${a[1]}`);
-  }
-
   const maxFreq = Math.max(...Object.values(frequency), 1);
   const scores = Object.fromEntries(
     allNumbers.map((n) => {
@@ -212,18 +192,7 @@ function analyzeData(data) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 20);
 
-  return {
-    allNumbers,
-    frequency,
-    noSalidos,
-    repetidos,
-    invertidos,
-    distances,
-    pyramids,
-    cruces: [...cruces],
-    scores,
-    expansionModel,
-  };
+  return { allNumbers, frequency, noSalidos, repetidos, invertidos, distances, scores, expansionModel };
 }
 
 function cellClass(number, analysis) {
@@ -281,9 +250,7 @@ function renderAccordion(data) {
       content.appendChild(pill);
     });
 
-    if (!filtered.length) {
-      content.textContent = "Sin datos para esta hora.";
-    }
+    if (!filtered.length) content.textContent = "Sin datos para esta hora.";
 
     els.hourAccordion.appendChild(fragment);
   });
@@ -308,42 +275,6 @@ function renderTop(analysis) {
   });
 }
 
-function renderChart(analysis) {
-  const entries = Object.entries(analysis.frequency)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20);
-
-  const labels = entries.map(([n]) => n);
-  const values = entries.map(([, f]) => f);
-
-  if (appState.chart) appState.chart.destroy();
-
-  appState.chart = new Chart(els.frequencyChart, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [{
-        label: "Frecuencia",
-        data: values,
-        backgroundColor: "rgba(59,130,246,0.7)",
-        borderColor: "rgba(147,197,253,1)",
-        borderWidth: 1,
-      }],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: "#e5e7eb" } },
-      },
-      scales: {
-        x: { ticks: { color: "#e5e7eb" } },
-        y: { ticks: { color: "#e5e7eb" } },
-      },
-    },
-  });
-}
-
 function renderAll(data, analysis) {
   renderGrid(analysis);
   renderTop(analysis);
@@ -352,12 +283,24 @@ function renderAll(data, analysis) {
   renderPills(els.repeatedList, analysis.repetidos);
   renderPills(els.invertedList, analysis.invertidos);
   renderHistory(data);
-  renderChart(analysis);
+}
+
+function showNoMonthlyData(monthKey) {
+  const month = monthNameEs(monthKey);
+  const monthCap = month.charAt(0).toUpperCase() + month.slice(1);
+  els.numberGrid.innerHTML = "";
+  els.topRecommendations.innerHTML = "";
+  els.hourAccordion.innerHTML = "";
+  els.missingList.innerHTML = "";
+  els.repeatedList.innerHTML = "";
+  els.invertedList.innerHTML = "";
+  els.historyBody.innerHTML = `<tr><td colspan=\"3\">Aún no hay sorteos para ${monthCap}. Puedes consultar el mes anterior para estimar el primer número de ${monthCap}.</td></tr>`;
+  els.generatedPlay.textContent = "Sin jugada sugerida por falta de sorteos en el mes actual.";
 }
 
 function generatePlay(analysis) {
   const candidates = analysis.expansionModel.slice(0, 12).map((x) => x.n);
-  const size = 2 + Math.floor(Math.random() * 3); // 2-4 números
+  const size = 2 + Math.floor(Math.random() * 3);
   const selected = [];
   while (selected.length < size && candidates.length) {
     const idx = Math.floor(Math.random() * candidates.length);
@@ -367,15 +310,25 @@ function generatePlay(analysis) {
 }
 
 async function refreshData(force = false) {
-  try {
-    els.status.textContent = "Cargando datos…";
+  const monthKey = getCurrentMonthKey();
 
-    let data = !force ? loadFromCache() : null;
+  try {
+    els.status.textContent = `Cargando datos del mes ${monthKey}…`;
+
+    let data = !force ? loadFromCache(monthKey) : null;
     if (!data) {
-      const html = await fetchHtmlWithFallback();
-      data = parseLotteryHtml(html);
-      if (!data.length) throw new Error("No se extrajeron sorteos válidos del HTML.");
-      saveToCache(data);
+      const html = await fetchHistoryHtml(monthKey);
+      data = parseLotteryHtml(html, monthKey);
+      saveToCache(monthKey, data);
+    }
+
+    appState.activeMonth = monthKey;
+
+    if (!data.length) {
+      appState = { ...appState, data: [], analysis: null };
+      showNoMonthlyData(monthKey);
+      els.status.textContent = `Sin sorteos para ${monthKey}.`;
+      return;
     }
 
     const analysis = analyzeData(data);
@@ -384,7 +337,7 @@ async function refreshData(force = false) {
 
     const last = data[data.length - 1];
     const updatedAt = new Date().toLocaleString();
-    els.status.textContent = `OK · ${data.length} sorteos cargados · Último: ${last.fecha} ${last.hora} ${last.numero} · ${updatedAt}`;
+    els.status.textContent = `OK · ${data.length} sorteos cargados (${monthKey}) · Último: ${last.fecha} ${last.hora} ${last.numero} · ${updatedAt}`;
   } catch (error) {
     console.error(error);
     els.status.textContent = `Error: ${error.message}`;
