@@ -20,54 +20,42 @@
     <main class="layout">
       <section class="card span-2">
         <h2>Tablero 00–99</h2>
-        <p class="hint">Colores: gris=salió una vez, verde=no salió, celeste=repetido, celeste con letra roja=muy repetido, amarillo=invertido.</p>
         <div id="numberGrid" class="number-grid"></div>
       </section>
 
       <section class="card">
-        <h2>Top 5 recomendados</h2>
+        <h2>Top 5 del día</h2>
         <ol id="topRecommendations" class="list"></ol>
       </section>
 
       <section class="card">
-        <h2>Números muy repetidos</h2>
-        <div id="hotList" class="pill-list"></div>
+        <h2>Algoritmos visuales</h2>
+        <div id="algorithmPanels" class="algorithm-panels"></div>
       </section>
 
       <section class="card span-2">
-        <h2>Panel por hora</h2>
-        <div id="hourAccordion" class="accordion"></div>
-      </section>
-
-      <section class="card">
-        <h2>Números no salidos</h2>
-        <div id="missingList" class="pill-list"></div>
-      </section>
-
-      <section class="card">
-        <h2>Números repetidos</h2>
-        <div id="repeatedList" class="pill-list"></div>
-      </section>
-
-      <section class="card">
-        <h2>Números invertidos</h2>
-        <div id="invertedList" class="pill-list"></div>
+        <details>
+          <summary id="hourPanelTitle">Panel por hora del mes de ...</summary>
+          <div id="hourAccordion" class="accordion"></div>
+        </details>
       </section>
 
       <section class="card span-2">
-        <h2>Historial</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Hora</th>
-                <th>Número</th>
-              </tr>
-            </thead>
-            <tbody id="historyBody"></tbody>
-          </table>
-        </div>
+        <details>
+          <summary id="historyTitle">Historial del mes de ...</summary>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Número</th>
+                </tr>
+              </thead>
+              <tbody id="historyBody"></tbody>
+            </table>
+          </div>
+        </details>
       </section>
 
     </main>

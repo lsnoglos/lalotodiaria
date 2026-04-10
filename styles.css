@@ -85,9 +85,10 @@ h1, h2, p { margin: 0.2rem 0; }
   border: 1px solid rgba(148, 163, 184, 0.25);
   background: #0b1220;
   font-weight: 600;
+  cursor: pointer;
 }
 
-.cell.salio { background: color-mix(in hsl, var(--gray) 70%, #0b1220); }
+.cell.salio { background: color-mix(in hsl, var(--green) 35%, #0b1220); color: #d0ffe0; }
 .cell.no-salido { background: color-mix(in hsl, var(--green) 60%, #0b1220); color: #062210; }
 .cell.repetido { background: color-mix(in hsl, var(--cyan) 75%, #0b1220); color: #03253b; }
 .cell.muy-repetido { background: color-mix(in hsl, var(--cyan) 75%, #0b1220); color: var(--red); font-weight: 900; }
@@ -111,9 +112,12 @@ h1, h2, p { margin: 0.2rem 0; }
 .list { padding-left: 1.1rem; }
 .generated-play {
   margin-top: 0.55rem;
-  font-size: 1rem;
+  font-size: 0.82rem;
   font-weight: 700;
   color: #fef08a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .accordion details {
@@ -135,6 +139,60 @@ h1, h2, p { margin: 0.2rem 0; }
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
+}
+
+.card > details > summary {
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.algorithm-panels {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.algo-card {
+  border: 1px solid #334155;
+  border-radius: 0.7rem;
+  padding: 0.5rem;
+  background: #0b1220;
+}
+
+.algo-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.algo-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.shape {
+  margin-top: 0.4rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+  font-size: 0.72rem;
+  color: #c6d8ff;
+}
+
+.grid-tooltip {
+  position: fixed;
+  z-index: 100;
+  min-width: 220px;
+  max-width: 280px;
+  background: #09101f;
+  border: 1px solid #334155;
+  border-radius: 0.6rem;
+  padding: 0.45rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.grid-tooltip strong {
+  color: #fef08a;
 }
 
 .table-wrap { overflow-x: auto; }
