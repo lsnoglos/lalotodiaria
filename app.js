@@ -17,6 +17,7 @@ let appState = {
   currentTopFive: [],
   gridColumns: 10,
   gridSortDirection: "asc",
+  gridStartWith: "00",
 };
 
 const els = {
@@ -27,6 +28,7 @@ const els = {
   topRecommendations: document.getElementById("topRecommendations"),
   generatedPlay: document.getElementById("generatedPlay"),
   gridColumnsSelect: document.getElementById("gridColumnsSelect"),
+  gridStartSelect: document.getElementById("gridStartSelect"),
   gridSortBtn: document.getElementById("gridSortBtn"),
   algorithmPanels: document.getElementById("algorithmPanels"),
   hourAccordion: document.getElementById("hourAccordion"),
@@ -274,7 +276,11 @@ function renderGrid(analysis) {
   els.numberGrid.innerHTML = "";
   els.numberGrid.style.gridTemplateColumns = `repeat(${appState.gridColumns}, minmax(0, 1fr))`;
 
-  const orderedNumbers = appState.gridSortDirection === "desc" ? analysis.allNumbers.slice().reverse() : analysis.allNumbers;
+  const numbersByStart =
+    appState.gridStartWith === "01"
+      ? [...analysis.allNumbers.slice(1), analysis.allNumbers[0]]
+      : analysis.allNumbers.slice();
+  const orderedNumbers = appState.gridSortDirection === "desc" ? numbersByStart.slice().reverse() : numbersByStart;
 
   orderedNumbers.forEach((number) => {
     const div = document.createElement("div");
@@ -495,6 +501,11 @@ els.gridColumnsSelect.addEventListener("change", (event) => {
   const selectedColumns = Number(event.target.value);
   if (Number.isNaN(selectedColumns)) return;
   appState.gridColumns = selectedColumns;
+  if (appState.analysis) renderGrid(appState.analysis);
+});
+els.gridStartSelect.addEventListener("change", (event) => {
+  const startWith = event.target.value === "01" ? "01" : "00";
+  appState.gridStartWith = startWith;
   if (appState.analysis) renderGrid(appState.analysis);
 });
 els.gridSortBtn.addEventListener("click", () => {
