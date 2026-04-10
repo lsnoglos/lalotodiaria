@@ -15,9 +15,9 @@ let appState = {
   analysis: null,
   activeMonth: "",
   currentTopFive: [],
-  gridColumns: 10,
+  gridColumns: 8,
   gridSortDirection: "asc",
-  gridStartWith: "00",
+  gridStartWith: "01",
 };
 
 const els = {
