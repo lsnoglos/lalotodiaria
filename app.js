@@ -15,6 +15,8 @@ let appState = {
   analysis: null,
   activeMonth: "",
   currentTopFive: [],
+  gridColumns: 10,
+  gridSortDirection: "asc",
 };
 
 const els = {
@@ -24,6 +26,8 @@ const els = {
   numberGrid: document.getElementById("numberGrid"),
   topRecommendations: document.getElementById("topRecommendations"),
   generatedPlay: document.getElementById("generatedPlay"),
+  gridColumnsSelect: document.getElementById("gridColumnsSelect"),
+  gridSortBtn: document.getElementById("gridSortBtn"),
   algorithmPanels: document.getElementById("algorithmPanels"),
   hourAccordion: document.getElementById("hourAccordion"),
   hourPanelTitle: document.getElementById("hourPanelTitle"),
@@ -268,7 +272,11 @@ function showGridTooltip(content, x, y) {
 
 function renderGrid(analysis) {
   els.numberGrid.innerHTML = "";
-  analysis.allNumbers.forEach((number) => {
+  els.numberGrid.style.gridTemplateColumns = `repeat(${appState.gridColumns}, minmax(0, 1fr))`;
+
+  const orderedNumbers = appState.gridSortDirection === "desc" ? analysis.allNumbers.slice().reverse() : analysis.allNumbers;
+
+  orderedNumbers.forEach((number) => {
     const div = document.createElement("div");
     div.className = `cell ${cellClass(number, analysis)}`.trim();
     div.textContent = number;
@@ -406,6 +414,11 @@ function renderAll(data, analysis) {
   renderHistory(data);
 }
 
+function setGridSortButtonLabel() {
+  const label = appState.gridSortDirection === "asc" ? "Ascendente" : "Descendente";
+  els.gridSortBtn.textContent = `Orden: ${label}`;
+}
+
 function showNoMonthlyData(monthKey) {
   const month = monthNameEs(monthKey);
   const monthCap = month.charAt(0).toUpperCase() + month.slice(1);
@@ -478,6 +491,17 @@ els.generatePlayBtn.addEventListener("click", () => {
   if (!appState.analysis) return;
   generatePlay(appState.analysis);
 });
+els.gridColumnsSelect.addEventListener("change", (event) => {
+  const selectedColumns = Number(event.target.value);
+  if (Number.isNaN(selectedColumns)) return;
+  appState.gridColumns = selectedColumns;
+  if (appState.analysis) renderGrid(appState.analysis);
+});
+els.gridSortBtn.addEventListener("click", () => {
+  appState.gridSortDirection = appState.gridSortDirection === "asc" ? "desc" : "asc";
+  setGridSortButtonLabel();
+  if (appState.analysis) renderGrid(appState.analysis);
+});
 
 document.addEventListener("click", (event) => {
   if (event.target.closest(".cell")) return;
@@ -486,3 +510,4 @@ document.addEventListener("click", (event) => {
 });
 
 refreshData();
+setGridSortButtonLabel();
