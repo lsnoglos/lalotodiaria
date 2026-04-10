@@ -74,6 +74,13 @@ h1, h2, p { margin: 0.2rem 0; }
 }
 
 .status { color: var(--muted); display: block; margin-top: 0.25rem; }
+.last-draw-highlight {
+  margin-top: 0.4rem;
+  font-size: 1rem;
+  font-weight: 900;
+  color: #f97316;
+  letter-spacing: 0.01em;
+}
 .layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -112,10 +119,13 @@ h1, h2, p { margin: 0.2rem 0; }
 
 .cell.salio { background: color-mix(in hsl, var(--green) 30%, #0b1220); color: #f4fff9; }
 .cell.salio-doble { background: color-mix(in hsl, var(--yellow) 40%, #0b1220); color: #fff9e6; }
-.cell.no-salido-par { background: color-mix(in hsl, var(--green) 52%, #0b1220); color: #f3fff8; }
-.cell.no-salido-impar { background: color-mix(in hsl, var(--green) 48%, #0b1220); color: #effff6; }
-.cell.no-salido-doble-par { background: color-mix(in hsl, var(--green) 52%, var(--yellow) 12%, #0b1220); color: #fefce8; }
-.cell.no-salido-doble-impar { background: color-mix(in hsl, var(--green) 49%, var(--yellow) 10%, #0b1220); color: #fef9c3; }
+.cell.no-salido-par,
+.cell.no-salido-impar,
+.cell.no-salido-doble-par,
+.cell.no-salido-doble-impar {
+  background: #ffffff;
+  color: #000000;
+}
 .cell.repetido { background: color-mix(in hsl, var(--cyan) 62%, #0b1220); color: #ecfeff; }
 .cell.muy-repetido { background: color-mix(in hsl, var(--cyan) 58%, #0b1220); color: #ffe4e6; font-weight: 900; text-shadow: 0 0 1px rgba(239, 68, 68, 0.4); }
 .cell.invertido { background: color-mix(in hsl, #f59e0b 55%, #0b1220); color: #fff7ed; }
