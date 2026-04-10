@@ -14,6 +14,7 @@ let appState = {
   data: [],
   analysis: null,
   activeMonth: "",
+  currentTopFive: [],
 };
 
 const els = {
@@ -23,12 +24,11 @@ const els = {
   numberGrid: document.getElementById("numberGrid"),
   topRecommendations: document.getElementById("topRecommendations"),
   generatedPlay: document.getElementById("generatedPlay"),
-  hotList: document.getElementById("hotList"),
+  algorithmPanels: document.getElementById("algorithmPanels"),
   hourAccordion: document.getElementById("hourAccordion"),
-  missingList: document.getElementById("missingList"),
-  repeatedList: document.getElementById("repeatedList"),
-  invertedList: document.getElementById("invertedList"),
+  hourPanelTitle: document.getElementById("hourPanelTitle"),
   historyBody: document.getElementById("historyBody"),
+  historyTitle: document.getElementById("historyTitle"),
   accordionTemplate: document.getElementById("accordionTemplate"),
 };
 
@@ -215,7 +215,7 @@ function analyzeData(data) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 20);
 
-  return { allNumbers, frequency, noSalidos, repetidos, muyRepetidos, invertidos, distances, scores, expansionModel };
+  return { allNumbers, frequency, noSalidos, repetidos, muyRepetidos, invertidos, distances, scores, expansionModel, dataPoints: totalDraws };
 }
 
 function cellClass(number, analysis) {
@@ -227,28 +227,55 @@ function cellClass(number, analysis) {
   return "salio";
 }
 
+function formatDrawEntry(draw) {
+  if (!draw) return "Aún no ha salido";
+  const [year, month, day] = draw.fecha.split("-");
+  const shortYear = year.slice(-2);
+  const label = HOUR_LABELS[draw.hora] || draw.hora;
+  return `Jugó el ${day} - ${month} - ${shortYear} a las ${label}`;
+}
+
+function buildNumberDetail(number, analysis) {
+  const drawList = appState.data.filter((d) => d.numero === number);
+  const inverse = `${number[1]}${number[0]}`;
+  const inverseSeen = analysis.frequency[inverse] > 0;
+
+  return [
+    `<strong>${number}</strong>`,
+    drawList.length === 0 ? "Aún no ha salido." : drawList.length === 1 ? "Salió 1 vez en el mes." : `Ha salido ${drawList.length} veces en el mes.`,
+    formatDrawEntry(drawList[drawList.length - 1]),
+    drawList.length > 1 ? formatDrawEntry(drawList[drawList.length - 2]) : "",
+    inverseSeen ? `Es el invertido del ${inverse}.` : `Su invertido (${inverse}) todavía no sale.`,
+  ]
+    .filter(Boolean)
+    .join("<br>");
+}
+
+function showGridTooltip(content, x, y) {
+  let tooltip = document.querySelector(".grid-tooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.className = "grid-tooltip";
+    document.body.appendChild(tooltip);
+  }
+  tooltip.innerHTML = content;
+  const pad = 12;
+  const maxX = window.innerWidth - 300;
+  const maxY = window.innerHeight - 150;
+  tooltip.style.left = `${Math.max(8, Math.min(x + pad, maxX))}px`;
+  tooltip.style.top = `${Math.max(8, Math.min(y + pad, maxY))}px`;
+}
+
 function renderGrid(analysis) {
   els.numberGrid.innerHTML = "";
   analysis.allNumbers.forEach((number) => {
     const div = document.createElement("div");
     div.className = `cell ${cellClass(number, analysis)}`.trim();
     div.textContent = number;
-    div.title = `Freq: ${analysis.frequency[number]} | Distancia: ${analysis.distances[number]} | Score: ${analysis.scores[number]}`;
+    div.addEventListener("click", (event) => {
+      showGridTooltip(buildNumberDetail(number, analysis), event.clientX, event.clientY);
+    });
     els.numberGrid.appendChild(div);
-  });
-}
-
-function renderPills(container, values, emptyText = "Sin datos") {
-  container.innerHTML = "";
-  if (!values.length) {
-    container.textContent = emptyText;
-    return;
-  }
-  values.forEach((value) => {
-    const span = document.createElement("span");
-    span.className = "pill";
-    span.textContent = value;
-    container.appendChild(span);
   });
 }
 
@@ -261,8 +288,8 @@ function renderAccordion(data) {
     const summary = fragment.querySelector("summary");
     const content = fragment.querySelector(".accordion-content");
 
-    summary.textContent = `${hour} · ${filtered.length} sorteos`;
-    if (filtered.length === 0) details.open = false;
+    summary.textContent = `${HOUR_LABELS[hour]} · ${filtered.length} sorteos`;
+    details.open = false;
 
     filtered.forEach((draw) => {
       const pill = document.createElement("span");
@@ -288,35 +315,106 @@ function renderHistory(data) {
 
 function renderTop(analysis) {
   const top = analysis.expansionModel.slice(0, 5);
+  appState.currentTopFive = top.map((x) => x.n);
   els.topRecommendations.innerHTML = "";
   top.forEach((item) => {
     const li = document.createElement("li");
-    li.textContent = `${item.n} · score ${item.score} (freq:${item.freq}, dist:${item.distance})`;
+    li.textContent = `${item.n} · ${item.freq === 0 ? "No ha salido este mes" : `Salió ${item.freq} ${item.freq === 1 ? "vez" : "veces"}`} · ${item.distance} sorteos sin aparecer`;
     els.topRecommendations.appendChild(li);
+  });
+}
+
+function drawPyramid(numbers) {
+  const rows = [1, 2, 3, 4];
+  let idx = 0;
+  return rows
+    .map((size) => {
+      const rowNumbers = numbers.slice(idx, idx + size).join(" ");
+      idx += size;
+      return rowNumbers.padStart(Math.floor((20 + rowNumbers.length) / 2), " ");
+    })
+    .join("\n");
+}
+
+function drawCross(numbers) {
+  const n = numbers.slice(0, 9);
+  return [
+    `   ${n[0]}   `,
+    ` ${n[1]} ${n[2]} `,
+    `${n[3]} ${n[4]} ${n[5]}`,
+    ` ${n[6]} ${n[7]} `,
+    `   ${n[8]}   `,
+  ].join("\n");
+}
+
+function renderAlgorithmPanels(analysis) {
+  const top10 = analysis.expansionModel.slice(0, 10).map((x) => x.n);
+  const kolmogorovSignal = analysis.expansionModel
+    .slice(0, 5)
+    .map((x) => `${x.n}:${Math.max(0.1, 1 - x.freq / Math.max(1, analysis.dataPoints)).toFixed(2)}`)
+    .join(" · ");
+
+  const gambler = analysis.noSalidos.slice(0, 5).join(", ") || "Ninguno";
+  const pareto = analysis.expansionModel
+    .filter((x) => x.distance > 6 || x.freq === 0)
+    .slice(0, 5)
+    .map((x) => x.n)
+    .join(", ");
+
+  const cards = [
+    {
+      title: "Pirámide",
+      note: "Jerarquiza por oportunidad del algoritmo.",
+      shape: drawPyramid(top10),
+    },
+    {
+      title: "Cruce",
+      note: "Cruza tendencia reciente y números fríos.",
+      shape: drawCross(top10),
+    },
+    {
+      title: "Andrey Kolmogorov (complejidad)",
+      note: "Señal estimada por irregularidad histórica (más alto = menos patrón repetido).",
+      shape: kolmogorovSignal,
+    },
+    {
+      title: "Falacia del apostador",
+      note: "Estos parecen 'deber salir', pero recuerda: cada sorteo sigue siendo independiente.",
+      shape: gambler,
+    },
+    {
+      title: "Teoría de juego (Pareto)",
+      note: "Grupo eficiente: balance entre números atrasados y baja repetición.",
+      shape: pareto || "Sin conjunto eficiente claro",
+    },
+  ];
+
+  els.algorithmPanels.innerHTML = "";
+  cards.forEach((card) => {
+    const el = document.createElement("article");
+    el.className = "algo-card";
+    el.innerHTML = `<div class="algo-title">${card.title}</div><div class="algo-note">${card.note}</div><div class="shape">${card.shape}</div>`;
+    els.algorithmPanels.appendChild(el);
   });
 }
 
 function renderAll(data, analysis) {
   renderGrid(analysis);
   renderTop(analysis);
+  renderAlgorithmPanels(analysis);
   renderAccordion(data);
-  renderPills(els.missingList, analysis.noSalidos);
-  renderPills(els.repeatedList, analysis.repetidos);
-  renderPills(els.hotList, analysis.muyRepetidos, "Sin números con 3+ repeticiones");
-  renderPills(els.invertedList, analysis.invertidos);
   renderHistory(data);
 }
 
 function showNoMonthlyData(monthKey) {
   const month = monthNameEs(monthKey);
   const monthCap = month.charAt(0).toUpperCase() + month.slice(1);
+  els.hourPanelTitle.textContent = `Panel por hora del mes de ${monthCap}`;
+  els.historyTitle.textContent = `Historial del mes de ${monthCap}`;
   els.numberGrid.innerHTML = "";
   els.topRecommendations.innerHTML = "";
+  els.algorithmPanels.innerHTML = "";
   els.hourAccordion.innerHTML = "";
-  els.missingList.innerHTML = "";
-  els.repeatedList.innerHTML = "";
-  els.invertedList.innerHTML = "";
-  els.hotList.innerHTML = "";
   els.historyBody.innerHTML = `<tr><td colspan=\"3\">Aún no hay sorteos para ${monthCap}. Puedes consultar el mes anterior para estimar el primer número de ${monthCap}.</td></tr>`;
   els.generatedPlay.textContent = "Sin jugada sugerida por falta de sorteos en el mes actual.";
 }
@@ -332,13 +430,7 @@ function getNextHourLabel() {
 }
 
 function generatePlay(analysis) {
-  const candidates = analysis.expansionModel.slice(0, 12).map((x) => x.n);
-  const size = 5;
-  const selected = [];
-  while (selected.length < size && candidates.length) {
-    const idx = Math.floor(Math.random() * candidates.length);
-    selected.push(candidates.splice(idx, 1)[0]);
-  }
+  const selected = appState.currentTopFive.length ? appState.currentTopFive : analysis.expansionModel.slice(0, 5).map((x) => x.n);
   const nextHour = getNextHourLabel();
   els.generatedPlay.textContent = `Recomendado para las ${nextHour}: ${selected.join(", ")}.`;
 }
@@ -367,6 +459,9 @@ async function refreshData(force = false) {
 
     const analysis = analyzeData(data);
     appState = { ...appState, data, analysis };
+    const monthCap = monthNameEs(monthKey).replace(/^./, (s) => s.toUpperCase());
+    els.hourPanelTitle.textContent = `Panel por hora del mes de ${monthCap}`;
+    els.historyTitle.textContent = `Historial del mes de ${monthCap}`;
     renderAll(data, analysis);
 
     const last = data[data.length - 1];
@@ -382,6 +477,12 @@ els.refreshBtn.addEventListener("click", () => refreshData(true));
 els.generatePlayBtn.addEventListener("click", () => {
   if (!appState.analysis) return;
   generatePlay(appState.analysis);
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".cell")) return;
+  const tooltip = document.querySelector(".grid-tooltip");
+  if (tooltip) tooltip.remove();
 });
 
 refreshData();
