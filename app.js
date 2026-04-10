@@ -36,6 +36,7 @@ const els = {
   numberGrid: document.getElementById("numberGrid"),
   topRecommendations: document.getElementById("topRecommendations"),
   generatedPlay: document.getElementById("generatedPlay"),
+  lastDrawHighlight: document.getElementById("lastDrawHighlight"),
   gridColumnsSelect: document.getElementById("gridColumnsSelect"),
   gridStartSelect: document.getElementById("gridStartSelect"),
   gridSortBtn: document.getElementById("gridSortBtn"),
@@ -611,6 +612,7 @@ function renderPredictionStats() {
 function renderAll(data, analysis) {
   renderGrid(analysis);
   renderTop(analysis);
+  generatePlay(analysis);
   renderAlgorithmPanels(analysis);
   renderAccordion(data);
   renderHistory(data);
@@ -633,6 +635,7 @@ function showNoMonthlyData(monthKey) {
   els.hourAccordion.innerHTML = "";
   els.historyBody.innerHTML = `<tr><td colspan=\"3\">Aún no hay sorteos para ${monthCap}. Puedes consultar el mes anterior para estimar el primer número de ${monthCap}.</td></tr>`;
   els.generatedPlay.textContent = "Sin jugada sugerida por falta de sorteos en el mes actual.";
+  els.lastDrawHighlight.textContent = "Último sorteo: --";
 }
 
 function getNextHourKey() {
@@ -694,10 +697,11 @@ async function refreshData(force = false) {
 
     const last = data[data.length - 1];
     const updatedAt = new Date().toLocaleString();
+    els.lastDrawHighlight.textContent = `Último sorteo: ${last.fecha} · ${HOUR_LABELS[last.hora] || last.hora} · ${last.numero}`;
     if (reason) {
       els.status.textContent = `Sin actualización remota: ${reason} · Usando caché local (${data.length} sorteos).`;
     } else {
-      els.status.textContent = `OK · ${data.length} sorteos cargados (${monthKey}) · Último: ${last.fecha} ${last.hora} ${last.numero} · ${updatedAt}`;
+      els.status.textContent = `OK · ${data.length} sorteos cargados (${monthKey}) · ${updatedAt}`;
     }
   } catch (error) {
     console.error(error);
