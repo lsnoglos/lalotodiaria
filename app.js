@@ -1,4 +1,9 @@
 const SOURCE_URL = "https://www.yelu.com.ni/lottery/results/history";
+const SOURCE_PROXY_URLS = [
+  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  (url) => `https://proxy.cors.sh/${url}`,
+  (url) => `https://cors.isomorphic-git.org/${url}`,
+];
 const CACHE_KEY = "lotoData";
 const CACHE_TIME_KEY = "lotoDataUpdatedAt";
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -62,23 +67,38 @@ async function fetchHistoryHtml(monthKey) {
     "data[Lottery][date]": monthKey,
   });
 
-  const direct = await fetch(SOURCE_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-    cache: "no-store",
-  });
+  const attempts = [SOURCE_URL, ...SOURCE_PROXY_URLS.map((buildUrl) => buildUrl(SOURCE_URL))];
+  const errors = [];
 
-  if (!direct.ok) {
-    throw new Error(`No se pudo consultar historial mensual (HTTP ${direct.status}).`);
+  for (const requestUrl of attempts) {
+    try {
+      const response = await fetch(requestUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        errors.push(`${requestUrl} → HTTP ${response.status}`);
+        continue;
+      }
+
+      const html = await response.text();
+      if (!html.includes("Loto Nicaragua Números Ganadores Anteriores")) {
+        errors.push(`${requestUrl} → respuesta inesperada`);
+        continue;
+      }
+
+      return html;
+    } catch (error) {
+      errors.push(`${requestUrl} → ${error.message}`);
+    }
   }
 
-  const html = await direct.text();
-  if (!html.includes("Loto Nicaragua Números Ganadores Anteriores")) {
-    throw new Error("La respuesta no contiene la tabla histórica esperada.");
-  }
-
-  return html;
+  throw new Error(
+    `No se pudo consultar yelu.com.ni (bloqueo de red/CORS). Intentos: ${errors.join(" | ")}`
+  );
 }
 
 function normalizeHour(value) {
