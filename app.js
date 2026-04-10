@@ -6,9 +6,18 @@ const SOURCE_PROXY_URLS = [
 ];
 const CACHE_KEY = "lotoData";
 const CACHE_TIME_KEY = "lotoDataUpdatedAt";
+const FORCED_UPDATE_KEY = "lotoForcedUpdateAt";
+const PREDICTION_PENDING_KEY = "lotoPredictionPending";
+const PREDICTION_RESULTS_KEY = "lotoPredictionResults";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const HOURS = ["12PM", "3PM", "6PM", "9PM"];
 const HOUR_LABELS = { "12PM": "12:00pm", "3PM": "3:00pm", "6PM": "6:00pm", "9PM": "9:00pm" };
+const GAME_SCHEDULE = {
+  "12PM": { hour: 12, minute: 0, label: "12:00pm" },
+  "3PM": { hour: 15, minute: 0, label: "3:00pm" },
+  "6PM": { hour: 18, minute: 0, label: "6:00pm" },
+  "9PM": { hour: 21, minute: 0, label: "9:00pm" },
+};
 
 let appState = {
   data: [],
@@ -35,6 +44,8 @@ const els = {
   hourPanelTitle: document.getElementById("hourPanelTitle"),
   historyBody: document.getElementById("historyBody"),
   historyTitle: document.getElementById("historyTitle"),
+  predictionStatsBody: document.getElementById("predictionStatsBody"),
+  predictionStatsSummary: document.getElementById("predictionStatsSummary"),
   accordionTemplate: document.getElementById("accordionTemplate"),
 };
 
@@ -66,6 +77,78 @@ function loadFromCache(monthKey) {
 function saveToCache(monthKey, data) {
   localStorage.setItem(CACHE_KEY, JSON.stringify({ month: monthKey, data }));
   localStorage.setItem(CACHE_TIME_KEY, String(Date.now()));
+}
+
+function getStoredArray(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getPendingPrediction() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PREDICTION_PENDING_KEY) || "null");
+    if (!parsed || !Array.isArray(parsed.numbers)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingPrediction(prediction) {
+  localStorage.setItem(PREDICTION_PENDING_KEY, JSON.stringify(prediction));
+}
+
+function clearPendingPrediction() {
+  localStorage.removeItem(PREDICTION_PENDING_KEY);
+}
+
+function drawHourSortValue(hour) {
+  const schedule = GAME_SCHEDULE[hour];
+  return schedule ? schedule.hour * 60 + schedule.minute : 0;
+}
+
+function drawToDate(draw) {
+  const [year, month, day] = draw.fecha.split("-").map(Number);
+  const schedule = GAME_SCHEDULE[draw.hora];
+  if (!schedule) return new Date(0);
+  return new Date(year, month - 1, day, schedule.hour, schedule.minute, 0, 0);
+}
+
+function getPassedGameSlots(fromDate, toDate) {
+  if (!(fromDate instanceof Date) || !(toDate instanceof Date) || Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime()) || toDate <= fromDate) {
+    return [];
+  }
+
+  const slots = [];
+  const cursor = new Date(fromDate);
+  cursor.setHours(0, 0, 0, 0);
+  const end = new Date(toDate);
+  end.setHours(23, 59, 59, 999);
+  while (cursor <= end) {
+    Object.entries(GAME_SCHEDULE).forEach(([hourKey, schedule]) => {
+      const slot = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate(), schedule.hour, schedule.minute, 0, 0);
+      if (slot > fromDate && slot <= toDate) slots.push({ hourKey, at: slot });
+    });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return slots.sort((a, b) => a.at - b.at);
+}
+
+function shouldForceRefreshBySchedule() {
+  const lastForced = Number(localStorage.getItem(FORCED_UPDATE_KEY) || 0);
+  if (!lastForced) return { shouldUpdate: true, reason: "Primera actualización manual." };
+
+  const now = new Date();
+  const passed = getPassedGameSlots(new Date(lastForced), now);
+  if (passed.length > 0) {
+    const lastSlot = passed[passed.length - 1];
+    return { shouldUpdate: true, reason: `Ya pasó el sorteo de ${GAME_SCHEDULE[lastSlot.hourKey].label}.` };
+  }
+  return { shouldUpdate: false, reason: "Aún no pasa el próximo horario de sorteo desde la última actualización." };
 }
 
 async function fetchHistoryHtml(monthKey) {
@@ -170,7 +253,10 @@ function parseLotteryHtml(html, monthKey) {
     }
   });
 
-  return rows.sort((a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`));
+  return rows.sort((a, b) => {
+    if (a.fecha === b.fecha) return drawHourSortValue(a.hora) - drawHourSortValue(b.hora);
+    return a.fecha.localeCompare(b.fecha);
+  });
 }
 
 /** Crea lista ["00", ... "99"]. */
@@ -337,6 +423,11 @@ function renderHistory(data) {
 function renderTop(analysis) {
   const top = analysis.expansionModel.slice(0, 5);
   appState.currentTopFive = top.map((x) => x.n);
+  savePendingPrediction({
+    predictedAt: new Date().toISOString(),
+    targetHour: getNextHourKey(),
+    numbers: appState.currentTopFive.slice(0, 5),
+  });
   els.topRecommendations.innerHTML = "";
   top.forEach((item) => {
     const li = document.createElement("li");
@@ -382,6 +473,7 @@ function renderAlgorithmPanels(analysis) {
     .map((x) => x.n)
     .join(", ");
 
+  const predictionDriven = buildPredictionDrivenTop(analysis);
   const cards = [
     {
       title: "Pirámide",
@@ -408,6 +500,11 @@ function renderAlgorithmPanels(analysis) {
       note: "Grupo eficiente: balance entre números atrasados y baja repetición.",
       shape: pareto || "Sin conjunto eficiente claro",
     },
+    {
+      title: "Según predicciones",
+      note: "Ajusta por rendimiento histórico de aciertos/desaciertos guardados.",
+      shape: predictionDriven.length ? predictionDriven.join(", ") : "Aún no hay datos suficientes.",
+    },
   ];
 
   els.algorithmPanels.innerHTML = "";
@@ -419,12 +516,105 @@ function renderAlgorithmPanels(analysis) {
   });
 }
 
+function resolvePredictionResults(data) {
+  const pending = getPendingPrediction();
+  if (!pending) return;
+
+  const predictionTime = new Date(pending.predictedAt);
+  if (Number.isNaN(predictionTime.getTime())) {
+    clearPendingPrediction();
+    return;
+  }
+
+  const upcomingDraws = data.filter((draw) => drawToDate(draw) > predictionTime);
+  if (!upcomingDraws.length) return;
+
+  const draw = upcomingDraws[0];
+  const results = getStoredArray(PREDICTION_RESULTS_KEY);
+  const drawId = `${draw.fecha}_${draw.hora}`;
+  if (results.some((item) => item.drawId === drawId)) {
+    clearPendingPrediction();
+    return;
+  }
+
+  const hit = pending.numbers.includes(draw.numero);
+  results.push({
+    drawId,
+    drawNumber: draw.numero,
+    drawDate: draw.fecha,
+    drawHour: draw.hora,
+    predictedAt: pending.predictedAt,
+    predictionHour: pending.targetHour,
+    numbers: pending.numbers.slice(0, 5),
+    hit,
+  });
+  localStorage.setItem(PREDICTION_RESULTS_KEY, JSON.stringify(results));
+  clearPendingPrediction();
+}
+
+function buildPredictionDrivenTop(analysis) {
+  const results = getStoredArray(PREDICTION_RESULTS_KEY);
+  if (results.length < 3) return [];
+
+  const perNumber = Object.fromEntries(analysis.allNumbers.map((n) => [n, { hits: 0, misses: 0 }]));
+  results.forEach((item) => {
+    (item.numbers || []).forEach((n) => {
+      if (!perNumber[n]) return;
+      if (item.drawNumber === n) perNumber[n].hits += 1;
+      else perNumber[n].misses += 1;
+    });
+  });
+
+  return analysis.allNumbers
+    .map((n) => {
+      const stats = perNumber[n];
+      const attempts = stats.hits + stats.misses;
+      if (!attempts) return { n, score: -Infinity };
+      const precision = stats.hits / attempts;
+      const baseScore = analysis.scores[n] || 0;
+      const score = precision * 8 + stats.hits * 2 + baseScore * 0.15;
+      return { n, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((item) => item.n);
+}
+
+function renderPredictionStats() {
+  if (!els.predictionStatsBody || !els.predictionStatsSummary) return;
+  const results = getStoredArray(PREDICTION_RESULTS_KEY);
+  els.predictionStatsBody.innerHTML = "";
+
+  if (!results.length) {
+    els.predictionStatsSummary.textContent = "Aún no hay resultados registrados.";
+    els.predictionStatsBody.innerHTML = `<tr><td colspan="5">Cuando ocurra un nuevo sorteo tras actualizar, aquí verás aciertos y desaciertos.</td></tr>`;
+    return;
+  }
+
+  const total = results.length;
+  const hits = results.filter((item) => item.hit).length;
+  const misses = total - hits;
+  const hitRate = ((hits / total) * 100).toFixed(1);
+  els.predictionStatsSummary.textContent = `Total: ${total} · Aciertos: ${hits} · Desaciertos: ${misses} · Efectividad: ${hitRate}%`;
+
+  results
+    .slice()
+    .reverse()
+    .slice(0, 120)
+    .forEach((item) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${item.drawDate}</td><td>${HOUR_LABELS[item.drawHour] || item.drawHour}</td><td>${item.numbers.join(", ")}</td><td><strong>${item.drawNumber}</strong></td><td>${item.hit ? "✅ Acierto" : "❌ Desacierto"}</td>`;
+      els.predictionStatsBody.appendChild(tr);
+    });
+}
+
 function renderAll(data, analysis) {
   renderGrid(analysis);
   renderTop(analysis);
   renderAlgorithmPanels(analysis);
   renderAccordion(data);
   renderHistory(data);
+  renderPredictionStats();
 }
 
 function setGridSortButtonLabel() {
@@ -445,20 +635,20 @@ function showNoMonthlyData(monthKey) {
   els.generatedPlay.textContent = "Sin jugada sugerida por falta de sorteos en el mes actual.";
 }
 
-function getNextHourLabel() {
+function getNextHourKey() {
   const now = new Date();
   const hour = now.getHours();
-  if (hour < 12) return HOUR_LABELS["12PM"];
-  if (hour < 15) return HOUR_LABELS["3PM"];
-  if (hour < 18) return HOUR_LABELS["6PM"];
-  if (hour < 21) return HOUR_LABELS["9PM"];
-  return HOUR_LABELS["12PM"];
+  if (hour < 12) return "12PM";
+  if (hour < 15) return "3PM";
+  if (hour < 18) return "6PM";
+  if (hour < 21) return "9PM";
+  return "12PM";
 }
 
 function generatePlay(analysis) {
   const selected = appState.currentTopFive.length ? appState.currentTopFive : analysis.expansionModel.slice(0, 5).map((x) => x.n);
-  const nextHour = getNextHourLabel();
-  els.generatedPlay.textContent = `Recomendado para las ${nextHour}: ${selected.join(", ")}.`;
+  const nextHourKey = getNextHourKey();
+  els.generatedPlay.textContent = `Recomendado para las ${HOUR_LABELS[nextHourKey]}: ${selected.join(", ")}.`;
 }
 
 async function refreshData(force = false) {
@@ -468,10 +658,21 @@ async function refreshData(force = false) {
     els.status.textContent = `Cargando datos del mes ${monthKey}…`;
 
     let data = !force ? loadFromCache(monthKey) : null;
+    let reason = "";
+
+    if (force) {
+      const decision = shouldForceRefreshBySchedule();
+      if (!decision.shouldUpdate) {
+        reason = decision.reason;
+        data = loadFromCache(monthKey) || appState.data;
+      }
+    }
+
     if (!data) {
       const html = await fetchHistoryHtml(monthKey);
       data = parseLotteryHtml(html, monthKey);
       saveToCache(monthKey, data);
+      if (force) localStorage.setItem(FORCED_UPDATE_KEY, String(Date.now()));
     }
 
     appState.activeMonth = monthKey;
@@ -483,6 +684,7 @@ async function refreshData(force = false) {
       return;
     }
 
+    resolvePredictionResults(data);
     const analysis = analyzeData(data);
     appState = { ...appState, data, analysis };
     const monthCap = monthNameEs(monthKey).replace(/^./, (s) => s.toUpperCase());
@@ -492,7 +694,11 @@ async function refreshData(force = false) {
 
     const last = data[data.length - 1];
     const updatedAt = new Date().toLocaleString();
-    els.status.textContent = `OK · ${data.length} sorteos cargados (${monthKey}) · Último: ${last.fecha} ${last.hora} ${last.numero} · ${updatedAt}`;
+    if (reason) {
+      els.status.textContent = `Sin actualización remota: ${reason} · Usando caché local (${data.length} sorteos).`;
+    } else {
+      els.status.textContent = `OK · ${data.length} sorteos cargados (${monthKey}) · Último: ${last.fecha} ${last.hora} ${last.numero} · ${updatedAt}`;
+    }
   } catch (error) {
     console.error(error);
     els.status.textContent = `Error: ${error.message}`;
