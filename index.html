@@ -8,19 +8,19 @@
   </head>
   <body>
     <header class="app-header">
-      <h1>Analizador Inteligente · Loto Diaria Nicaragua</h1>
-      <p>Datos reales desde yelu.com.ni, análisis automático y recomendaciones.</p>
+      <h1>Analizador Loto Diaria</h1>
       <div class="controls">
         <button id="refreshBtn" class="btn primary">Actualizar</button>
         <button id="generatePlayBtn" class="btn accent">Generar Jugada</button>
       </div>
+      <p id="generatedPlay" class="generated-play">Recomendado para las 12:00pm: --, --, --, --, --.</p>
       <small id="status" class="status">Inicializando…</small>
     </header>
 
     <main class="layout">
       <section class="card span-2">
         <h2>Tablero 00–99</h2>
-        <p class="hint">Colores: verde=no salido, rojo=repetido, amarillo=invertido, naranja=alta frecuencia, azul=frío.</p>
+        <p class="hint">Colores: gris=salió una vez, verde=no salió, celeste=repetido, celeste con letra roja=muy repetido, amarillo=invertido.</p>
         <div id="numberGrid" class="number-grid"></div>
       </section>
 
@@ -30,8 +30,8 @@
       </section>
 
       <section class="card">
-        <h2>Jugada sugerida</h2>
-        <div id="generatedPlay" class="generated-play">Presiona “Generar Jugada”.</div>
+        <h2>Números muy repetidos</h2>
+        <div id="hotList" class="pill-list"></div>
       </section>
 
       <section class="card span-2">

@@ -8,6 +8,7 @@ const CACHE_KEY = "lotoData";
 const CACHE_TIME_KEY = "lotoDataUpdatedAt";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const HOURS = ["12PM", "3PM", "6PM", "9PM"];
+const HOUR_LABELS = { "12PM": "12:00pm", "3PM": "3:00pm", "6PM": "6:00pm", "9PM": "9:00pm" };
 
 let appState = {
   data: [],
@@ -22,6 +23,7 @@ const els = {
   numberGrid: document.getElementById("numberGrid"),
   topRecommendations: document.getElementById("topRecommendations"),
   generatedPlay: document.getElementById("generatedPlay"),
+  hotList: document.getElementById("hotList"),
   hourAccordion: document.getElementById("hourAccordion"),
   missingList: document.getElementById("missingList"),
   repeatedList: document.getElementById("repeatedList"),
@@ -184,6 +186,7 @@ function analyzeData(data) {
   const uniqueUsed = [...new Set(used)];
   const noSalidos = allNumbers.filter((n) => !uniqueUsed.includes(n));
   const repetidos = allNumbers.filter((n) => frequency[n] > 1);
+  const muyRepetidos = allNumbers.filter((n) => frequency[n] > 2);
 
   const invertidos = allNumbers.filter((n) => {
     const inv = n[1] + n[0];
@@ -212,18 +215,16 @@ function analyzeData(data) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 20);
 
-  return { allNumbers, frequency, noSalidos, repetidos, invertidos, distances, scores, expansionModel };
+  return { allNumbers, frequency, noSalidos, repetidos, muyRepetidos, invertidos, distances, scores, expansionModel };
 }
 
 function cellClass(number, analysis) {
   const freq = analysis.frequency[number];
-  const hasInv = analysis.invertidos.includes(number);
   if (analysis.noSalidos.includes(number)) return "no-salido";
-  if (freq > 2) return "alta-frecuencia";
+  if (analysis.invertidos.includes(number)) return "invertido";
+  if (freq > 2) return "muy-repetido";
   if (freq > 1) return "repetido";
-  if (hasInv) return "invertido";
-  if (analysis.distances[number] > 20) return "frio";
-  return "";
+  return "salio";
 }
 
 function renderGrid(analysis) {
@@ -301,6 +302,7 @@ function renderAll(data, analysis) {
   renderAccordion(data);
   renderPills(els.missingList, analysis.noSalidos);
   renderPills(els.repeatedList, analysis.repetidos);
+  renderPills(els.hotList, analysis.muyRepetidos, "Sin números con 3+ repeticiones");
   renderPills(els.invertedList, analysis.invertidos);
   renderHistory(data);
 }
@@ -314,19 +316,31 @@ function showNoMonthlyData(monthKey) {
   els.missingList.innerHTML = "";
   els.repeatedList.innerHTML = "";
   els.invertedList.innerHTML = "";
+  els.hotList.innerHTML = "";
   els.historyBody.innerHTML = `<tr><td colspan=\"3\">Aún no hay sorteos para ${monthCap}. Puedes consultar el mes anterior para estimar el primer número de ${monthCap}.</td></tr>`;
   els.generatedPlay.textContent = "Sin jugada sugerida por falta de sorteos en el mes actual.";
 }
 
+function getNextHourLabel() {
+  const now = new Date();
+  const hour = now.getHours();
+  if (hour < 12) return HOUR_LABELS["12PM"];
+  if (hour < 15) return HOUR_LABELS["3PM"];
+  if (hour < 18) return HOUR_LABELS["6PM"];
+  if (hour < 21) return HOUR_LABELS["9PM"];
+  return HOUR_LABELS["12PM"];
+}
+
 function generatePlay(analysis) {
   const candidates = analysis.expansionModel.slice(0, 12).map((x) => x.n);
-  const size = 2 + Math.floor(Math.random() * 3);
+  const size = 5;
   const selected = [];
   while (selected.length < size && candidates.length) {
     const idx = Math.floor(Math.random() * candidates.length);
     selected.push(candidates.splice(idx, 1)[0]);
   }
-  els.generatedPlay.textContent = selected.join(" · ");
+  const nextHour = getNextHourLabel();
+  els.generatedPlay.textContent = `Recomendado para las ${nextHour}: ${selected.join(", ")}.`;
 }
 
 async function refreshData(force = false) {
