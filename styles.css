@@ -114,9 +114,11 @@ h1, h2, p { margin: 0.2rem 0; }
 .cell.salio-doble { background: color-mix(in hsl, var(--yellow) 75%, #0b1220); color: #3b2d00; }
 .cell.no-salido-par { background: color-mix(in hsl, var(--green) 60%, #0b1220); color: #062210; }
 .cell.no-salido-impar { background: color-mix(in hsl, var(--green) 57%, #0b1220); color: #072613; }
+.cell.no-salido-doble-par { background: color-mix(in hsl, var(--green) 67%, var(--yellow) 10%, #0b1220); color: #073114; }
+.cell.no-salido-doble-impar { background: color-mix(in hsl, var(--green) 64%, var(--yellow) 8%, #0b1220); color: #072c12; }
 .cell.repetido { background: color-mix(in hsl, var(--cyan) 75%, #0b1220); color: #03253b; }
 .cell.muy-repetido { background: color-mix(in hsl, var(--cyan) 75%, #0b1220); color: var(--red); font-weight: 900; }
-.cell.invertido { background: color-mix(in hsl, var(--yellow) 75%, #0b1220); color: #3b2d00; }
+.cell.invertido { background: color-mix(in hsl, #f59e0b 70%, #0b1220); color: #3f2400; }
 
 .pill-list {
   display: flex;
