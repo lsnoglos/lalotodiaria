@@ -226,7 +226,11 @@ function analyzeData(data) {
 
 function cellClass(number, analysis) {
   const freq = analysis.frequency[number];
-  if (analysis.noSalidos.includes(number)) return "no-salido";
+  const isDouble = number[0] === number[1];
+  const isEven = Number(number) % 2 === 0;
+
+  if (analysis.noSalidos.includes(number)) return isEven ? "no-salido-par" : "no-salido-impar";
+  if (isDouble) return "salio-doble";
   if (analysis.invertidos.includes(number)) return "invertido";
   if (freq > 2) return "muy-repetido";
   if (freq > 1) return "repetido";

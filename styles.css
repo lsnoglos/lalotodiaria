@@ -111,7 +111,9 @@ h1, h2, p { margin: 0.2rem 0; }
 }
 
 .cell.salio { background: color-mix(in hsl, var(--green) 35%, #0b1220); color: #d0ffe0; }
-.cell.no-salido { background: color-mix(in hsl, var(--green) 60%, #0b1220); color: #062210; }
+.cell.salio-doble { background: color-mix(in hsl, var(--yellow) 75%, #0b1220); color: #3b2d00; }
+.cell.no-salido-par { background: color-mix(in hsl, var(--green) 60%, #0b1220); color: #062210; }
+.cell.no-salido-impar { background: color-mix(in hsl, var(--green) 57%, #0b1220); color: #072613; }
 .cell.repetido { background: color-mix(in hsl, var(--cyan) 75%, #0b1220); color: #03253b; }
 .cell.muy-repetido { background: color-mix(in hsl, var(--cyan) 75%, #0b1220); color: var(--red); font-weight: 900; }
 .cell.invertido { background: color-mix(in hsl, var(--yellow) 75%, #0b1220); color: #3b2d00; }
