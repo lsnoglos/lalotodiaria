@@ -24,9 +24,10 @@ let appState = {
   analysis: null,
   activeMonth: "",
   currentTopFive: [],
-  gridColumns: 8,
+  gridColumns: 4,
   gridSortDirection: "asc",
   gridStartWith: "01",
+  personalGameNumbers: [],
 };
 
 const els = {
@@ -374,6 +375,22 @@ function buildNumberDetail(number, analysis) {
     .join("<br>");
 }
 
+function isPersonalNumberSelected(number) {
+  return appState.personalGameNumbers.includes(number);
+}
+
+function togglePersonalGameNumber(number, selected) {
+  const set = new Set(appState.personalGameNumbers);
+  if (selected) set.add(number);
+  else set.delete(number);
+  appState.personalGameNumbers = Array.from(set).sort();
+}
+
+function buildPersonalGameControl(number) {
+  const checked = isPersonalNumberSelected(number) ? "checked" : "";
+  return `<label class="personal-check"><input type="checkbox" class="personal-check-input" data-number="${number}" ${checked}> Armar jugada personal</label>`;
+}
+
 function showGridTooltip(content, x, y) {
   let tooltip = document.querySelector(".grid-tooltip");
   if (!tooltip) {
@@ -404,8 +421,11 @@ function renderGrid(analysis) {
     div.className = `cell ${cellClass(number, analysis)}`.trim();
     div.textContent = number;
     div.addEventListener("click", (event) => {
-      showGridTooltip(buildNumberDetail(number, analysis), event.clientX, event.clientY);
+      const detail = buildNumberDetail(number, analysis);
+      const control = buildPersonalGameControl(number);
+      showGridTooltip(`${detail}<br>${control}`, event.clientX, event.clientY);
     });
+    if (isPersonalNumberSelected(number)) div.classList.add("selected-personal");
     els.numberGrid.appendChild(div);
   });
 }
@@ -755,8 +775,17 @@ els.gridSortBtn.addEventListener("click", () => {
   if (appState.analysis) renderGrid(appState.analysis);
 });
 
+document.addEventListener("change", (event) => {
+  const input = event.target.closest(".personal-check-input");
+  if (!input) return;
+  const number = input.dataset.number;
+  if (!number) return;
+  togglePersonalGameNumber(number, input.checked);
+  if (appState.analysis) renderGrid(appState.analysis);
+});
+
 document.addEventListener("click", (event) => {
-  if (event.target.closest(".cell")) return;
+  if (event.target.closest(".cell") || event.target.closest(".grid-tooltip")) return;
   const tooltip = document.querySelector(".grid-tooltip");
   if (tooltip) tooltip.remove();
 });

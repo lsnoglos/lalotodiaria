@@ -117,6 +117,34 @@ h1, h2, p { margin: 0.2rem 0; }
   cursor: pointer;
 }
 
+.cell.selected-personal {
+  border-color: #facc15;
+  box-shadow: 0 0 0 1px #facc15 inset, 0 0 11px rgba(250, 204, 21, 0.7);
+  animation: personalGlow 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes personalGlow {
+  from {
+    box-shadow: 0 0 0 1px #facc15 inset, 0 0 8px rgba(250, 204, 21, 0.45);
+  }
+  to {
+    box-shadow: 0 0 0 1px #facc15 inset, 0 0 16px rgba(250, 204, 21, 0.95);
+  }
+}
+
+.personal-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  color: #fde68a;
+  font-weight: 700;
+}
+
+.personal-check-input {
+  accent-color: #facc15;
+}
+
 .cell.salio { background: color-mix(in hsl, var(--green) 30%, #0b1220); color: #f4fff9; }
 .cell.salio-doble { background: color-mix(in hsl, var(--yellow) 40%, #0b1220); color: #fff9e6; }
 .cell.no-salido-par,
