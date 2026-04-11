@@ -177,7 +177,20 @@ h1, h2, p { margin: 0.2rem 0; }
   background: #0b1220;
 }
 
-.list { padding-left: 1.1rem; }
+.list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.35rem 0 0;
+}
+
+.list li {
+  font-size: 0.82rem;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid #334155;
+  border-radius: 0.45rem;
+  background: #0b1220;
+  margin-bottom: 0.3rem;
+}
 .generated-play {
   margin-top: 0.55rem;
   font-size: 0.82rem;
@@ -296,6 +309,17 @@ th, td {
   border-bottom: 1px solid #334155;
   padding: 0.5rem;
   text-align: left;
+}
+
+#predictionStatsSummary {
+  font-size: 0.82rem;
+  margin-bottom: 0.35rem;
+}
+
+#predictionStatsBody td {
+  font-size: 0.78rem;
+  padding: 0.35rem 0.45rem;
+  vertical-align: top;
 }
 
 @media (max-width: 900px) {
