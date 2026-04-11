@@ -25,7 +25,7 @@ let appState = {
   analysis: null,
   activeMonth: "",
   currentTopFive: [],
-  gridColumns: 4,
+  gridColumns: 10,
   gridSortDirection: "asc",
   gridStartWith: "01",
   personalGameNumbers: [],
@@ -527,18 +527,30 @@ function renderHistory(data) {
 }
 
 function renderTop(analysis) {
-  const top = analysis.expansionModel.slice(0, 5);
-  const nextDraw = getNextDrawInfo(new Date());
+  const top = getAdaptiveTopFive(analysis);
   appState.currentTopFive = top.map((x) => x.n);
-  savePendingPrediction({
-    predictedAt: new Date().toISOString(),
-    targetHour: nextDraw.hourKey,
-    numbers: appState.currentTopFive.slice(0, 5),
-  });
+  const pending = getPendingPrediction();
+  const sameNumbers =
+    pending &&
+    Array.isArray(pending.numbers) &&
+    pending.numbers.length === appState.currentTopFive.length &&
+    pending.numbers.every((value, idx) => value === appState.currentTopFive[idx]);
+  if (!sameNumbers) {
+    const nextDraw = getNextDrawInfo(new Date());
+    const predictionId = `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+    savePendingPrediction({
+      predictionId,
+      predictedAt: new Date().toISOString(),
+      targetHour: nextDraw.hourKey,
+      numbers: appState.currentTopFive.slice(0, 5),
+      remainingDraws: 4,
+      evaluatedDrawIds: [],
+    });
+  }
   els.topRecommendations.innerHTML = "";
   top.forEach((item) => {
     const li = document.createElement("li");
-    li.textContent = `${item.n} · ${item.freq === 0 ? "No ha salido este mes" : `Salió ${item.freq} ${item.freq === 1 ? "vez" : "veces"}`} · ${item.distance} sorteos sin aparecer`;
+    li.textContent = `${item.n} | ${item.freq === 0 ? "No ha salido" : `${item.freq} vez${item.freq === 1 ? "" : "es"}`} | ${item.distance} sorteos`;
     els.topRecommendations.appendChild(li);
   });
 }
@@ -633,30 +645,54 @@ function resolvePredictionResults(data) {
     return;
   }
 
-  const upcomingDraws = data.filter((draw) => drawToDate(draw) > predictionTime);
+  const evaluated = new Set(Array.isArray(pending.evaluatedDrawIds) ? pending.evaluatedDrawIds : []);
+  const remainingDraws = Number.isInteger(pending.remainingDraws) ? pending.remainingDraws : 1;
+  const upcomingDraws = data.filter((draw) => {
+    if (drawToDate(draw) <= predictionTime) return false;
+    const drawId = `${draw.fecha}_${draw.hora}`;
+    return !evaluated.has(drawId);
+  });
   if (!upcomingDraws.length) return;
 
-  const draw = upcomingDraws[0];
   const results = getStoredArray(PREDICTION_RESULTS_KEY);
-  const drawId = `${draw.fecha}_${draw.hora}`;
-  if (results.some((item) => item.drawId === drawId)) {
+  let remaining = remainingDraws;
+  const nextEvaluated = new Set(evaluated);
+  let hasHit = false;
+
+  for (const draw of upcomingDraws) {
+    if (remaining <= 0 || hasHit) break;
+    const drawId = `${draw.fecha}_${draw.hora}`;
+    const predictionId = pending.predictionId || pending.predictedAt;
+    const resultId = `${predictionId}_${drawId}`;
+    if (results.some((item) => item.resultId === resultId)) {
+      nextEvaluated.add(drawId);
+      continue;
+    }
+
+    const hit = pending.numbers.includes(draw.numero);
+    results.push({
+      resultId,
+      predictionId,
+      drawId,
+      drawNumber: draw.numero,
+      drawDate: draw.fecha,
+      drawHour: draw.hora,
+      predictedAt: pending.predictedAt,
+      predictionHour: pending.targetHour,
+      numbers: pending.numbers.slice(0, 5),
+      hit,
+    });
+    nextEvaluated.add(drawId);
+    remaining -= 1;
+    if (hit) hasHit = true;
+  }
+
+  localStorage.setItem(PREDICTION_RESULTS_KEY, JSON.stringify(results));
+  if (remaining <= 0 || hasHit) {
     clearPendingPrediction();
     return;
   }
-
-  const hit = pending.numbers.includes(draw.numero);
-  results.push({
-    drawId,
-    drawNumber: draw.numero,
-    drawDate: draw.fecha,
-    drawHour: draw.hora,
-    predictedAt: pending.predictedAt,
-    predictionHour: pending.targetHour,
-    numbers: pending.numbers.slice(0, 5),
-    hit,
-  });
-  localStorage.setItem(PREDICTION_RESULTS_KEY, JSON.stringify(results));
-  clearPendingPrediction();
+  savePendingPrediction({ ...pending, remainingDraws: remaining, evaluatedDrawIds: Array.from(nextEvaluated) });
 }
 
 function buildPredictionDrivenTop(analysis) {
@@ -687,6 +723,36 @@ function buildPredictionDrivenTop(analysis) {
     .map((item) => item.n);
 }
 
+function getAdaptiveTopFive(analysis) {
+  const predictionDriven = buildPredictionDrivenTop(analysis);
+  const predictionBoost = Object.fromEntries(predictionDriven.map((n, idx) => [n, 5 - idx]));
+  const recentMissPenalty = {};
+  const results = getStoredArray(PREDICTION_RESULTS_KEY).slice(-24);
+  results.forEach((item) => {
+    if (item.hit) return;
+    (item.numbers || []).forEach((n) => {
+      recentMissPenalty[n] = (recentMissPenalty[n] || 0) + 1;
+    });
+  });
+
+  const adaptive = analysis.allNumbers
+    .map((n) => {
+      const baseScore = analysis.scores[n] || 0;
+      const missPenalty = (recentMissPenalty[n] || 0) * 2.6;
+      const boost = (predictionBoost[n] || 0) * 1.8;
+      const score = baseScore + boost - missPenalty;
+      return {
+        n,
+        score,
+        freq: analysis.frequency[n],
+        distance: analysis.distances[n],
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return adaptive.slice(0, 5);
+}
+
 function renderPredictionStats() {
   if (!els.predictionStatsBody || !els.predictionStatsSummary) return;
   const results = getStoredArray(PREDICTION_RESULTS_KEY);
@@ -710,7 +776,7 @@ function renderPredictionStats() {
     .slice(0, 120)
     .forEach((item) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${item.drawDate}</td><td>${HOUR_LABELS[item.drawHour] || item.drawHour}</td><td>${item.numbers.join(", ")}</td><td><strong>${item.drawNumber}</strong></td><td>${item.hit ? "✅ Acierto" : "❌ Desacierto"}</td>`;
+      tr.innerHTML = `<td>${item.drawDate}</td><td>${HOUR_LABELS[item.drawHour] || item.drawHour}</td><td>${item.numbers.join(" | ")}</td><td><strong>${item.drawNumber}</strong></td><td>${item.hit ? "✅ Acierto" : "❌ Desacierto"}</td>`;
       els.predictionStatsBody.appendChild(tr);
     });
 }
