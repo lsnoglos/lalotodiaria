@@ -756,19 +756,11 @@ async function refreshData(force = false) {
   const monthKey = getCurrentMonthKey();
 
   try {
-    els.status.textContent = `Cargando datos del mes ${monthKey}…`;
+    els.status.textContent = force
+      ? `Actualizando sorteo del mes ${monthKey} desde la página oficial…`
+      : `Cargando datos del mes ${monthKey}…`;
 
     let data = !force ? loadFromCache(monthKey) : null;
-    let reason = "";
-
-    if (force) {
-      const latestKnownDraw = (data && data[data.length - 1]) || (appState.data.length ? appState.data[appState.data.length - 1] : null);
-      const decision = shouldForceRefreshBySchedule(latestKnownDraw);
-      if (!decision.shouldUpdate) {
-        reason = decision.reason;
-        data = loadFromCache(monthKey) || appState.data;
-      }
-    }
 
     if (!data) {
       const html = await fetchHistoryHtml(monthKey);
@@ -797,11 +789,7 @@ async function refreshData(force = false) {
     const last = data[data.length - 1];
     const updatedAt = new Date().toLocaleString();
     els.lastDrawHighlight.textContent = `Último sorteo: ${last.fecha} · ${HOUR_LABELS[last.hora] || last.hora} · ${last.numero}`;
-    if (reason) {
-      els.status.textContent = `Sin actualización remota: ${reason} · Usando caché local (${data.length} sorteos).`;
-    } else {
-      els.status.textContent = `OK · ${data.length} sorteos cargados (${monthKey}) · ${updatedAt}`;
-    }
+    els.status.textContent = `OK · ${data.length} sorteos cargados (${monthKey}) · ${updatedAt}`;
   } catch (error) {
     console.error(error);
     els.status.textContent = `Error: ${error.message}`;
