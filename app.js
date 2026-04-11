@@ -9,6 +9,7 @@ const CACHE_TIME_KEY = "lotoDataUpdatedAt";
 const FORCED_UPDATE_KEY = "lotoForcedUpdateAt";
 const PREDICTION_PENDING_KEY = "lotoPredictionPending";
 const PREDICTION_RESULTS_KEY = "lotoPredictionResults";
+const PERSONAL_GAME_KEY = "lotoPersonalGameNumbers";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const HOURS = ["12PM", "3PM", "6PM", "9PM"];
 const HOUR_LABELS = { "12PM": "12:00pm", "3PM": "3:00pm", "6PM": "6:00pm", "9PM": "9:00pm" };
@@ -49,6 +50,9 @@ const els = {
   predictionStatsBody: document.getElementById("predictionStatsBody"),
   predictionStatsSummary: document.getElementById("predictionStatsSummary"),
   accordionTemplate: document.getElementById("accordionTemplate"),
+  personalGameSummary: document.getElementById("personalGameSummary"),
+  personalGameNumbers: document.getElementById("personalGameNumbers"),
+  clearPersonalGameBtn: document.getElementById("clearPersonalGameBtn"),
 };
 
 function getCurrentMonthKey() {
@@ -88,6 +92,16 @@ function getStoredArray(key) {
   } catch {
     return [];
   }
+}
+
+function loadPersonalGameNumbers() {
+  return getStoredArray(PERSONAL_GAME_KEY)
+    .filter((n) => /^\d{2}$/.test(n))
+    .sort();
+}
+
+function savePersonalGameNumbers() {
+  localStorage.setItem(PERSONAL_GAME_KEY, JSON.stringify(appState.personalGameNumbers));
 }
 
 function getPendingPrediction() {
@@ -384,6 +398,7 @@ function togglePersonalGameNumber(number, selected) {
   if (selected) set.add(number);
   else set.delete(number);
   appState.personalGameNumbers = Array.from(set).sort();
+  savePersonalGameNumbers();
 }
 
 function buildPersonalGameControl(number) {
@@ -398,12 +413,59 @@ function showGridTooltip(content, x, y) {
     tooltip.className = "grid-tooltip";
     document.body.appendChild(tooltip);
   }
-  tooltip.innerHTML = content;
+  tooltip.innerHTML = `<button type="button" class="tooltip-close-btn" aria-label="Cerrar detalle">×</button>${content}`;
   const pad = 12;
   const maxX = window.innerWidth - 300;
   const maxY = window.innerHeight - 150;
   tooltip.style.left = `${Math.max(8, Math.min(x + pad, maxX))}px`;
   tooltip.style.top = `${Math.max(8, Math.min(y + pad, maxY))}px`;
+}
+
+function closeGridTooltip() {
+  const tooltip = document.querySelector(".grid-tooltip");
+  if (tooltip) tooltip.remove();
+}
+
+function getNextDrawInfo(referenceDate = new Date()) {
+  const now = referenceDate instanceof Date ? referenceDate : new Date();
+  const slots = Object.entries(GAME_SCHEDULE)
+    .map(([hourKey, schedule]) => ({ hourKey, schedule }))
+    .sort((a, b) => a.schedule.hour - b.schedule.hour || a.schedule.minute - b.schedule.minute);
+
+  const nextToday = slots.find(({ schedule }) => {
+    const slotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), schedule.hour, schedule.minute, 0, 0);
+    return slotTime > now;
+  });
+
+  if (nextToday) {
+    return {
+      hourKey: nextToday.hourKey,
+      at: new Date(now.getFullYear(), now.getMonth(), now.getDate(), nextToday.schedule.hour, nextToday.schedule.minute, 0, 0),
+      isTomorrow: false,
+    };
+  }
+
+  const first = slots[0];
+  return {
+    hourKey: first.hourKey,
+    at: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, first.schedule.hour, first.schedule.minute, 0, 0),
+    isTomorrow: true,
+  };
+}
+
+function renderPersonalGameSection() {
+  if (!els.personalGameNumbers || !els.personalGameSummary) return;
+  const numbers = appState.personalGameNumbers.slice().sort();
+  els.personalGameSummary.textContent = `Juego armado (${numbers.length})`;
+
+  if (!numbers.length) {
+    els.personalGameNumbers.innerHTML = `<p class="hint">No has seleccionado números todavía.</p>`;
+    return;
+  }
+
+  els.personalGameNumbers.innerHTML = numbers
+    .map((number) => `<span class="pill personal-pill">${number}</span>`)
+    .join("");
 }
 
 function renderGrid(analysis) {
@@ -466,10 +528,11 @@ function renderHistory(data) {
 
 function renderTop(analysis) {
   const top = analysis.expansionModel.slice(0, 5);
+  const nextDraw = getNextDrawInfo(new Date());
   appState.currentTopFive = top.map((x) => x.n);
   savePendingPrediction({
     predictedAt: new Date().toISOString(),
-    targetHour: getNextHourKey(),
+    targetHour: nextDraw.hourKey,
     numbers: appState.currentTopFive.slice(0, 5),
   });
   els.topRecommendations.innerHTML = "";
@@ -654,6 +717,7 @@ function renderPredictionStats() {
 
 function renderAll(data, analysis) {
   renderGrid(analysis);
+  renderPersonalGameSection();
   renderTop(analysis);
   generatePlay(analysis);
   renderAlgorithmPanels(analysis);
@@ -681,20 +745,11 @@ function showNoMonthlyData(monthKey) {
   els.lastDrawHighlight.textContent = "Último sorteo: --";
 }
 
-function getNextHourKey() {
-  const now = new Date();
-  const hour = now.getHours();
-  if (hour < 12) return "12PM";
-  if (hour < 15) return "3PM";
-  if (hour < 18) return "6PM";
-  if (hour < 21) return "9PM";
-  return "12PM";
-}
-
 function generatePlay(analysis) {
   const selected = appState.currentTopFive.length ? appState.currentTopFive : analysis.expansionModel.slice(0, 5).map((x) => x.n);
-  const nextHourKey = getNextHourKey();
-  els.generatedPlay.textContent = `Recomendado para las ${HOUR_LABELS[nextHourKey]}: ${selected.join(", ")}.`;
+  const nextDraw = getNextDrawInfo(new Date());
+  const daySuffix = nextDraw.isTomorrow ? " de mañana" : "";
+  els.generatedPlay.textContent = `Recomendado para las ${HOUR_LABELS[nextDraw.hourKey]}${daySuffix}: ${selected.join(", ")}.`;
 }
 
 async function refreshData(force = false) {
@@ -781,14 +836,32 @@ document.addEventListener("change", (event) => {
   const number = input.dataset.number;
   if (!number) return;
   togglePersonalGameNumber(number, input.checked);
-  if (appState.analysis) renderGrid(appState.analysis);
+  if (appState.analysis) {
+    renderGrid(appState.analysis);
+    renderPersonalGameSection();
+  }
 });
 
 document.addEventListener("click", (event) => {
+  if (event.target.closest(".tooltip-close-btn")) {
+    closeGridTooltip();
+    return;
+  }
   if (event.target.closest(".cell") || event.target.closest(".grid-tooltip")) return;
-  const tooltip = document.querySelector(".grid-tooltip");
-  if (tooltip) tooltip.remove();
+  closeGridTooltip();
 });
 
+els.clearPersonalGameBtn?.addEventListener("click", () => {
+  if (!appState.personalGameNumbers.length) return;
+  const confirmed = window.confirm("¿Seguro que quieres borrar tu juego armado? Se quitarán todos los checks.");
+  if (!confirmed) return;
+  appState.personalGameNumbers = [];
+  savePersonalGameNumbers();
+  closeGridTooltip();
+  renderPersonalGameSection();
+  if (appState.analysis) renderGrid(appState.analysis);
+});
+
+appState.personalGameNumbers = loadPersonalGameNumbers();
 refreshData();
 setGridSortButtonLabel();
