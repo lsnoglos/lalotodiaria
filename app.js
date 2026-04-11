@@ -139,16 +139,39 @@ function getPassedGameSlots(fromDate, toDate) {
   return slots.sort((a, b) => a.at - b.at);
 }
 
-function shouldForceRefreshBySchedule() {
-  const lastForced = Number(localStorage.getItem(FORCED_UPDATE_KEY) || 0);
-  if (!lastForced) return { shouldUpdate: true, reason: "Primera actualización manual." };
-
+function shouldForceRefreshBySchedule(lastKnownDraw = null) {
   const now = new Date();
-  const passed = getPassedGameSlots(new Date(lastForced), now);
-  if (passed.length > 0) {
-    const lastSlot = passed[passed.length - 1];
+  const lastForced = Number(localStorage.getItem(FORCED_UPDATE_KEY) || 0);
+  const forcedDate = lastForced ? new Date(lastForced) : null;
+
+  if (!lastForced || !forcedDate || Number.isNaN(forcedDate.getTime())) {
+    return { shouldUpdate: true, reason: "Primera actualización manual." };
+  }
+
+  if (forcedDate > now) {
+    return { shouldUpdate: true, reason: "Se detectó hora guardada en el futuro; se reintenta actualización." };
+  }
+
+  const passedSinceForce = getPassedGameSlots(forcedDate, now);
+  if (passedSinceForce.length > 0) {
+    const lastSlot = passedSinceForce[passedSinceForce.length - 1];
     return { shouldUpdate: true, reason: `Ya pasó el sorteo de ${GAME_SCHEDULE[lastSlot.hourKey].label}.` };
   }
+
+  if (lastKnownDraw) {
+    const drawDate = drawToDate(lastKnownDraw);
+    if (!Number.isNaN(drawDate.getTime()) && drawDate < now) {
+      const passedSinceLastDraw = getPassedGameSlots(drawDate, now);
+      if (passedSinceLastDraw.length > 0) {
+        const lastSlot = passedSinceLastDraw[passedSinceLastDraw.length - 1];
+        return {
+          shouldUpdate: true,
+          reason: `El último sorteo guardado es anterior al horario de ${GAME_SCHEDULE[lastSlot.hourKey].label}.`,
+        };
+      }
+    }
+  }
+
   return { shouldUpdate: false, reason: "Aún no pasa el próximo horario de sorteo desde la última actualización." };
 }
 
@@ -664,7 +687,8 @@ async function refreshData(force = false) {
     let reason = "";
 
     if (force) {
-      const decision = shouldForceRefreshBySchedule();
+      const latestKnownDraw = (data && data[data.length - 1]) || (appState.data.length ? appState.data[appState.data.length - 1] : null);
+      const decision = shouldForceRefreshBySchedule(latestKnownDraw);
       if (!decision.shouldUpdate) {
         reason = decision.reason;
         data = loadFromCache(monthKey) || appState.data;
