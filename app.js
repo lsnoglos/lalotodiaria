@@ -411,10 +411,9 @@ function cellClass(number, analysis) {
     if (isDouble) return isEven ? "no-salido-doble-par" : "no-salido-doble-impar";
     return isEven ? "no-salido-par" : "no-salido-impar";
   }
+  if (freq > 1) return "repetido";
   if (isDouble) return "salio-doble";
   if (analysis.invertidos.includes(number)) return "invertido";
-  if (freq > 2) return "muy-repetido";
-  if (freq > 1) return "repetido";
   return "salio";
 }
 
