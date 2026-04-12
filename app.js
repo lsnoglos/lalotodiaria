@@ -37,6 +37,7 @@ const els = {
   generatePlayBtn: document.getElementById("generatePlayBtn"),
   numberGrid: document.getElementById("numberGrid"),
   topRecommendations: document.getElementById("topRecommendations"),
+  realtimeRecommendations: document.getElementById("realtimeRecommendations"),
   generatedPlay: document.getElementById("generatedPlay"),
   lastDrawHighlight: document.getElementById("lastDrawHighlight"),
   gridColumnsSelect: document.getElementById("gridColumnsSelect"),
@@ -453,6 +454,23 @@ function getNextDrawInfo(referenceDate = new Date()) {
   };
 }
 
+function buildSlotDate(baseDate, hourKey) {
+  const schedule = GAME_SCHEDULE[hourKey];
+  if (!schedule || !(baseDate instanceof Date) || Number.isNaN(baseDate.getTime())) return null;
+  return new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), schedule.hour, schedule.minute, 0, 0);
+}
+
+function isPendingPredictionCurrent(pending, referenceDate = new Date()) {
+  if (!pending || !pending.targetHour || !pending.predictedAt) return false;
+  const predictedAt = new Date(pending.predictedAt);
+  if (Number.isNaN(predictedAt.getTime())) return false;
+
+  let targetAt = buildSlotDate(predictedAt, pending.targetHour);
+  if (!targetAt) return false;
+  if (targetAt <= predictedAt) targetAt = new Date(targetAt.getTime() + 24 * 60 * 60 * 1000);
+  return targetAt > referenceDate;
+}
+
 function renderPersonalGameSection() {
   if (!els.personalGameNumbers || !els.personalGameSummary) return;
   const numbers = appState.personalGameNumbers.slice().sort();
@@ -535,7 +553,8 @@ function renderTop(analysis) {
     Array.isArray(pending.numbers) &&
     pending.numbers.length === appState.currentTopFive.length &&
     pending.numbers.every((value, idx) => value === appState.currentTopFive[idx]);
-  if (!sameNumbers) {
+  const shouldRefreshPending = !sameNumbers || !isPendingPredictionCurrent(pending, new Date());
+  if (shouldRefreshPending) {
     const nextDraw = getNextDrawInfo(new Date());
     const predictionId = `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
     savePendingPrediction({
@@ -552,6 +571,69 @@ function renderTop(analysis) {
     const li = document.createElement("li");
     li.textContent = `${item.n} | ${item.freq === 0 ? "No ha salido" : `${item.freq} vez${item.freq === 1 ? "" : "es"}`} | ${item.distance} sorteos`;
     els.topRecommendations.appendChild(li);
+  });
+}
+
+function buildRealtimeSuggestions(data, analysis, limit = 2) {
+  if (!Array.isArray(data) || data.length < 2 || !analysis) return [];
+
+  const lastDraw = data[data.length - 1];
+  const lastNumber = lastDraw?.numero;
+  if (!lastNumber || !analysis.allNumbers.includes(lastNumber)) return [];
+
+  const transitionCounts = Object.fromEntries(analysis.allNumbers.map((n) => [n, 0]));
+  let totalWeightedTransitions = 0;
+
+  for (let i = 0; i < data.length - 1; i += 1) {
+    if (data[i].numero !== lastNumber) continue;
+    const next = data[i + 1]?.numero;
+    if (!next || !Object.prototype.hasOwnProperty.call(transitionCounts, next)) continue;
+
+    const distanceFromNow = data.length - 2 - i;
+    const weight = Math.exp(-distanceFromNow / 6);
+    transitionCounts[next] += weight;
+    totalWeightedTransitions += weight;
+  }
+
+  const alpha = 0.35;
+  const universe = analysis.allNumbers.length;
+  const frequencyPenaltyBase = Math.max(1, ...Object.values(analysis.frequency));
+
+  return analysis.allNumbers
+    .map((n) => {
+      const weightedTransition = transitionCounts[n];
+      const transitionProb = (weightedTransition + alpha) / (totalWeightedTransitions + alpha * universe);
+      const freshnessBoost = Math.min(16, analysis.distances[n] || 0) / 16;
+      const frequencyPenalty = (analysis.frequency[n] || 0) / frequencyPenaltyBase;
+      const score = transitionProb * 0.7 + freshnessBoost * 0.4 - frequencyPenalty * 0.25;
+      return {
+        n,
+        score,
+        transitionProb,
+        weightedTransition,
+        distance: analysis.distances[n] || 0,
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+function renderRealtimeTop(data, analysis) {
+  if (!els.realtimeRecommendations) return;
+
+  const realtime = buildRealtimeSuggestions(data, analysis, 2);
+  els.realtimeRecommendations.innerHTML = "";
+
+  if (!realtime.length) {
+    els.realtimeRecommendations.innerHTML = "<li>Se necesitan al menos 2 sorteos para activar tiempo real.</li>";
+    return;
+  }
+
+  realtime.forEach((item) => {
+    const li = document.createElement("li");
+    const transitionLabel = (item.transitionProb * 100).toFixed(1);
+    li.textContent = `${item.n} | transición ${transitionLabel}% | atraso ${item.distance} sorteos`;
+    els.realtimeRecommendations.appendChild(li);
   });
 }
 
@@ -776,7 +858,9 @@ function renderPredictionStats() {
     .slice(0, 120)
     .forEach((item) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${item.drawDate}</td><td>${HOUR_LABELS[item.drawHour] || item.drawHour}</td><td>${item.numbers.join(" | ")}</td><td><strong>${item.drawNumber}</strong></td><td>${item.hit ? "✅ Acierto" : "❌ Desacierto"}</td>`;
+      const predictedAtText = item.predictedAt ? new Date(item.predictedAt).toLocaleString() : "--";
+      const predictionHourText = HOUR_LABELS[item.predictionHour] || item.predictionHour || "--";
+      tr.innerHTML = `<td>${item.drawDate}</td><td>${HOUR_LABELS[item.drawHour] || item.drawHour}</td><td>${item.numbers.join(" | ")}<br><small class="hint">Pronóstico: ${predictionHourText} · ${predictedAtText}</small></td><td><strong>${item.drawNumber}</strong></td><td>${item.hit ? "✅ Acierto" : "❌ Desacierto"}</td>`;
       els.predictionStatsBody.appendChild(tr);
     });
 }
@@ -785,6 +869,7 @@ function renderAll(data, analysis) {
   renderGrid(analysis);
   renderPersonalGameSection();
   renderTop(analysis);
+  renderRealtimeTop(data, analysis);
   generatePlay(analysis);
   renderAlgorithmPanels(analysis);
   renderAccordion(data);
