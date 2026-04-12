@@ -185,16 +185,16 @@ h1, h2, p { margin: 0.2rem 0; }
 
 .cell.selected-personal {
   border: 2px solid #fb923c;
-  box-shadow: 0 0 0 1px #fb923c inset, 0 0 13px rgba(251, 146, 60, 0.8);
+  box-shadow: 0 0 0 3px #fde047 inset, 0 0 0 1px #fb923c inset, 0 0 13px rgba(251, 146, 60, 0.8);
   animation: personalGlow 1.6s ease-in-out infinite alternate;
 }
 
 @keyframes personalGlow {
   from {
-    box-shadow: 0 0 0 1px #fb923c inset, 0 0 8px rgba(251, 146, 60, 0.45);
+    box-shadow: 0 0 0 3px #fde047 inset, 0 0 0 1px #fb923c inset, 0 0 8px rgba(251, 146, 60, 0.45);
   }
   to {
-    box-shadow: 0 0 0 1px #fb923c inset, 0 0 16px rgba(251, 146, 60, 0.95);
+    box-shadow: 0 0 0 3px #fde047 inset, 0 0 0 1px #fb923c inset, 0 0 16px rgba(251, 146, 60, 0.95);
   }
 }
 
@@ -274,6 +274,22 @@ h1, h2, p { margin: 0.2rem 0; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.chart-hint {
+  margin-bottom: 0.45rem;
+}
+
+.month-chart-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+#monthTrendChart {
+  width: 100%;
+  border: 1px solid #334155;
+  border-radius: 0.6rem;
+  background: #081224;
 }
 
 .accordion details {

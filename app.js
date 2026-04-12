@@ -50,6 +50,7 @@ const els = {
   gridStartSelect: document.getElementById("gridStartSelect"),
   viewModeSelect: document.getElementById("viewModeSelect"),
   gridSortBtn: document.getElementById("gridSortBtn"),
+  monthTrendChart: document.getElementById("monthTrendChart"),
   algorithmPanels: document.getElementById("algorithmPanels"),
   hourAccordion: document.getElementById("hourAccordion"),
   hourPanelTitle: document.getElementById("hourPanelTitle"),
@@ -701,9 +702,83 @@ function renderTop(analysis) {
   els.topRecommendations.innerHTML = "";
   top.forEach((item) => {
     const li = document.createElement("li");
-    li.textContent = `${item.n} | ${item.freq === 0 ? "No ha salido" : `${item.freq} vez${item.freq === 1 ? "" : "es"}`} | ${item.distance} sorteos`;
+    li.textContent = `${item.n} | ${item.freq === 0 ? "No ha salido" : `${item.freq} vez${item.freq === 1 ? "" : "es"}`} | ${item.distance} sorteos sin jugar`;
     els.topRecommendations.appendChild(li);
   });
+}
+
+function renderMonthTrendChart(data) {
+  const canvas = els.monthTrendChart;
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const draws = Array.isArray(data) ? data : [];
+  const width = canvas.clientWidth || canvas.parentElement?.clientWidth || 600;
+  const height = canvas.height || 230;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const leftPad = 40;
+  const rightPad = 12;
+  const topPad = 12;
+  const bottomPad = 24;
+  const plotWidth = Math.max(1, width - leftPad - rightPad);
+  const plotHeight = Math.max(1, height - topPad - bottomPad);
+  const toY = (value) => topPad + ((99 - value) / 99) * plotHeight;
+
+  ctx.fillStyle = "#0b1220";
+  ctx.fillRect(leftPad, topPad, plotWidth, plotHeight);
+
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.25)";
+  ctx.lineWidth = 1;
+  [0, 25, 50, 75, 99].forEach((tick) => {
+    const y = toY(tick);
+    ctx.beginPath();
+    ctx.moveTo(leftPad, y);
+    ctx.lineTo(width - rightPad, y);
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = "#cbd5e1";
+  ctx.font = "11px Inter, system-ui, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  [99, 75, 50, 25, 0].forEach((tick) => {
+    ctx.fillText(String(tick), leftPad - 6, toY(tick));
+  });
+
+  if (!draws.length) {
+    ctx.fillStyle = "#94a3b8";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Sin sorteos para graficar.", leftPad + plotWidth / 2, topPad + plotHeight / 2);
+    return;
+  }
+
+  const xStep = draws.length > 1 ? plotWidth / (draws.length - 1) : 0;
+  ctx.strokeStyle = "#22d3ee";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  draws.forEach((draw, index) => {
+    const value = Math.min(99, Math.max(0, Number(draw.numero)));
+    const x = leftPad + xStep * index;
+    const y = toY(value);
+    if (index === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  const lastValue = Math.min(99, Math.max(0, Number(draws[draws.length - 1].numero)));
+  const lastX = leftPad + xStep * (draws.length - 1);
+  const lastY = toY(lastValue);
+  ctx.fillStyle = "#f97316";
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function buildRealtimeSuggestions(data, analysis, limit = 2) {
@@ -999,6 +1074,7 @@ function renderPredictionStats() {
 
 function renderAll(data, analysis) {
   renderGrid(analysis);
+  renderMonthTrendChart(data);
   renderPersonalGameSection();
   renderTop(analysis);
   renderRealtimeTop(data, analysis);
@@ -1021,6 +1097,7 @@ function showNoMonthlyData(monthKey) {
   els.hourPanelTitle.textContent = `Panel por hora del mes de ${monthCap}`;
   els.historyTitle.textContent = `Historial del mes de ${monthCap}`;
   els.numberGrid.innerHTML = "";
+  renderMonthTrendChart([]);
   els.topRecommendations.innerHTML = "";
   els.algorithmPanels.innerHTML = "";
   els.hourAccordion.innerHTML = "";
@@ -1151,6 +1228,10 @@ els.clearPersonalGameBtn?.addEventListener("click", () => {
   closeGridTooltip();
   renderPersonalGameSection();
   if (appState.analysis) renderGrid(appState.analysis);
+});
+
+window.addEventListener("resize", () => {
+  renderMonthTrendChart(getVisibleData());
 });
 
 appState.personalGameNumbers = loadPersonalGameNumbers();
