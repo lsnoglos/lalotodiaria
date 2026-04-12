@@ -10,6 +10,7 @@ const FORCED_UPDATE_KEY = "lotoForcedUpdateAt";
 const PREDICTION_PENDING_KEY = "lotoPredictionPending";
 const PREDICTION_RESULTS_KEY = "lotoPredictionResults";
 const PERSONAL_GAME_KEY = "lotoPersonalGameNumbers";
+const VIEW_MODE_KEY = "lotoViewMode";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const HOURS = ["12PM", "3PM", "6PM", "9PM"];
 const HOUR_LABELS = { "12PM": "12:00pm", "3PM": "3:00pm", "6PM": "6:00pm", "9PM": "9:00pm" };
@@ -28,6 +29,7 @@ let appState = {
   gridColumns: 10,
   gridSortDirection: "asc",
   gridStartWith: "01",
+  viewMode: "default",
   personalGameNumbers: [],
 };
 
@@ -42,6 +44,7 @@ const els = {
   lastDrawHighlight: document.getElementById("lastDrawHighlight"),
   gridColumnsSelect: document.getElementById("gridColumnsSelect"),
   gridStartSelect: document.getElementById("gridStartSelect"),
+  viewModeSelect: document.getElementById("viewModeSelect"),
   gridSortBtn: document.getElementById("gridSortBtn"),
   algorithmPanels: document.getElementById("algorithmPanels"),
   hourAccordion: document.getElementById("hourAccordion"),
@@ -489,6 +492,8 @@ function renderPersonalGameSection() {
 function renderGrid(analysis) {
   els.numberGrid.innerHTML = "";
   els.numberGrid.style.gridTemplateColumns = `repeat(${appState.gridColumns}, minmax(0, 1fr))`;
+  const colorSequenceMap = appState.viewMode === "colorSequence" ? buildColorSequenceMap(appState.data) : null;
+  const numberSequenceMap = appState.viewMode === "numberSequence" ? buildNumberSequenceMap(appState.data) : null;
 
   const numbersByStart =
     appState.gridStartWith === "01"
@@ -499,7 +504,13 @@ function renderGrid(analysis) {
   orderedNumbers.forEach((number) => {
     const div = document.createElement("div");
     div.className = `cell ${cellClass(number, analysis)}`.trim();
-    div.textContent = number;
+    if (appState.viewMode === "colorSequence") {
+      div.innerHTML = renderColorSequenceCell(number, colorSequenceMap);
+    } else if (appState.viewMode === "numberSequence") {
+      div.innerHTML = renderNumberSequenceCell(number, numberSequenceMap);
+    } else {
+      div.textContent = number;
+    }
     div.addEventListener("click", (event) => {
       const detail = buildNumberDetail(number, analysis);
       const control = buildPersonalGameControl(number);
@@ -508,6 +519,79 @@ function renderGrid(analysis) {
     if (isPersonalNumberSelected(number)) div.classList.add("selected-personal");
     els.numberGrid.appendChild(div);
   });
+}
+
+function renderColorSequenceCell(number, colorSequenceMap) {
+  const ratios = colorSequenceMap[number] || [];
+  const segmentsHtml = ratios
+    .map((ratio) => `<span style="background:${getColorByRatio(ratio)}"></span>`)
+    .join("");
+  const safeSegments = segmentsHtml || `<span style="background:transparent"></span>`;
+  return `<div class="color-segments">${safeSegments}</div><div class="cell-number">${number}</div>`;
+}
+
+function renderNumberSequenceCell(number, numberSequenceMap) {
+  const indexes = numberSequenceMap[number] || [];
+  const indexesHtml = indexes.length ? `<div class="draw-indexes">${indexes.join(",")}</div>` : `<div class="draw-indexes"></div>`;
+  return `${indexesHtml}<div class="cell-number">${number}</div>`;
+}
+
+function buildColorSequenceMap(data) {
+  const totalDraws = Array.isArray(data) ? data.length : 0;
+  const map = {};
+  if (!totalDraws) return map;
+  data.forEach((draw, index) => {
+    if (!draw?.numero) return;
+    const ratio = totalDraws <= 1 ? 0 : index / totalDraws;
+    if (!map[draw.numero]) map[draw.numero] = [];
+    map[draw.numero].push(ratio);
+  });
+  return map;
+}
+
+function buildNumberSequenceMap(data) {
+  const map = {};
+  if (!Array.isArray(data)) return map;
+  data.forEach((draw, index) => {
+    if (!draw?.numero) return;
+    if (!map[draw.numero]) map[draw.numero] = [];
+    map[draw.numero].push(index + 1);
+  });
+  return map;
+}
+
+function getColorByRatio(ratio) {
+  const palette = [
+    { at: 0, color: "#FFE100" },
+    { at: 0.25, color: "#FFC917" },
+    { at: 0.5, color: "#F8650C" },
+    { at: 0.75, color: "#F00000" },
+    { at: 1, color: "#8C0000" },
+  ];
+
+  const clamped = Math.min(1, Math.max(0, Number(ratio) || 0));
+  const upperIndex = palette.findIndex((step) => clamped <= step.at);
+  if (upperIndex <= 0) return palette[0].color;
+  if (upperIndex === -1) return palette[palette.length - 1].color;
+
+  const lower = palette[upperIndex - 1];
+  const upper = palette[upperIndex];
+  const localRatio = (clamped - lower.at) / (upper.at - lower.at || 1);
+  return interpolateHexColor(lower.color, upper.color, localRatio);
+}
+
+function interpolateHexColor(colorA, colorB, ratio) {
+  const normalize = (hex) => hex.replace("#", "");
+  const toRgb = (hex) => {
+    const clean = normalize(hex);
+    return [0, 2, 4].map((start) => parseInt(clean.slice(start, start + 2), 16));
+  };
+  const [r1, g1, b1] = toRgb(colorA);
+  const [r2, g2, b2] = toRgb(colorB);
+  const clampRatio = Math.min(1, Math.max(0, ratio));
+  const mix = (a, b) => Math.round(a + (b - a) * clampRatio);
+  const toHex = (n) => n.toString(16).padStart(2, "0");
+  return `#${toHex(mix(r1, r2))}${toHex(mix(g1, g2))}${toHex(mix(b1, b2))}`;
 }
 
 function renderAccordion(data) {
@@ -968,6 +1052,13 @@ els.gridSortBtn.addEventListener("click", () => {
   setGridSortButtonLabel();
   if (appState.analysis) renderGrid(appState.analysis);
 });
+els.viewModeSelect?.addEventListener("change", (event) => {
+  const selectedView = event.target.value;
+  const allowed = new Set(["default", "colorSequence", "numberSequence"]);
+  appState.viewMode = allowed.has(selectedView) ? selectedView : "default";
+  localStorage.setItem(VIEW_MODE_KEY, appState.viewMode);
+  if (appState.analysis) renderGrid(appState.analysis);
+});
 
 document.addEventListener("change", (event) => {
   const input = event.target.closest(".personal-check-input");
@@ -1002,5 +1093,8 @@ els.clearPersonalGameBtn?.addEventListener("click", () => {
 });
 
 appState.personalGameNumbers = loadPersonalGameNumbers();
+const savedView = localStorage.getItem(VIEW_MODE_KEY) || "default";
+appState.viewMode = ["default", "colorSequence", "numberSequence"].includes(savedView) ? savedView : "default";
+if (els.viewModeSelect) els.viewModeSelect.value = appState.viewMode;
 refreshData();
 setGridSortButtonLabel();

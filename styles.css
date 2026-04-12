@@ -119,6 +119,33 @@ h1, h2, p { margin: 0.2rem 0; }
   background: #0b1220;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.cell-number {
+  line-height: 1.15;
+}
+
+.color-segments {
+  display: flex;
+  height: 6px;
+  margin-bottom: 2px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.color-segments span {
+  flex: 1;
+  min-width: 2px;
+}
+
+.draw-indexes {
+  font-size: 0.6rem;
+  color: #facc15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 0.8rem;
 }
 
 .cell.selected-personal {
@@ -345,5 +372,11 @@ th, td {
   .btn { flex: 1; }
   .grid-controls select {
     flex: 1;
+  }
+  .draw-indexes {
+    font-size: 0.55rem;
+  }
+  .color-segments {
+    height: 5px;
   }
 }
