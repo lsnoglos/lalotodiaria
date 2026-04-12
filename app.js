@@ -25,6 +25,7 @@ let appState = {
   data: [],
   analysis: null,
   activeMonth: "",
+  visibleDrawIndex: -1,
   currentTopFive: [],
   gridColumns: 10,
   gridSortDirection: "asc",
@@ -38,6 +39,9 @@ const els = {
   refreshBtn: document.getElementById("refreshBtn"),
   generatePlayBtn: document.getElementById("generatePlayBtn"),
   numberGrid: document.getElementById("numberGrid"),
+  prevDrawBtn: document.getElementById("prevDrawBtn"),
+  nextDrawBtn: document.getElementById("nextDrawBtn"),
+  timelineLabel: document.getElementById("timelineLabel"),
   topRecommendations: document.getElementById("topRecommendations"),
   realtimeRecommendations: document.getElementById("realtimeRecommendations"),
   generatedPlay: document.getElementById("generatedPlay"),
@@ -58,6 +62,51 @@ const els = {
   personalGameNumbers: document.getElementById("personalGameNumbers"),
   clearPersonalGameBtn: document.getElementById("clearPersonalGameBtn"),
 };
+
+function getVisibleData() {
+  if (!Array.isArray(appState.data) || !appState.data.length) return [];
+  const clamped = Math.max(0, Math.min(appState.visibleDrawIndex, appState.data.length - 1));
+  return appState.data.slice(0, clamped + 1);
+}
+
+function isTimelineAtLatest() {
+  return appState.visibleDrawIndex >= appState.data.length - 1;
+}
+
+function formatTimelineLabel(draw) {
+  if (!draw) return "--";
+  const [year, month, day] = draw.fecha.split("-");
+  const hourLabel = HOUR_LABELS[draw.hora] || draw.hora;
+  return `${day}/${month}/${year} ${hourLabel}`;
+}
+
+function renderTimelineControls() {
+  const hasData = appState.data.length > 0;
+  if (!hasData) {
+    els.prevDrawBtn.disabled = true;
+    els.nextDrawBtn.disabled = true;
+    els.timelineLabel.textContent = "--";
+    return;
+  }
+  const minIndex = 0;
+  const maxIndex = appState.data.length - 1;
+  const clamped = Math.max(minIndex, Math.min(appState.visibleDrawIndex, maxIndex));
+  appState.visibleDrawIndex = clamped;
+  els.prevDrawBtn.disabled = clamped <= minIndex;
+  els.nextDrawBtn.disabled = clamped >= maxIndex;
+  els.timelineLabel.textContent = formatTimelineLabel(appState.data[clamped]);
+}
+
+function renderByTimeline() {
+  const visibleData = getVisibleData();
+  if (!visibleData.length) return;
+  const analysis = analyzeData(visibleData);
+  appState.analysis = analysis;
+  renderAll(visibleData, analysis);
+  const current = visibleData[visibleData.length - 1];
+  els.lastDrawHighlight.textContent = `Sorteo en vista: ${current.fecha} · ${HOUR_LABELS[current.hora] || current.hora} · ${current.numero}`;
+  renderTimelineControls();
+}
 
 function getCurrentMonthKey() {
   const now = new Date();
@@ -378,7 +427,7 @@ function formatDrawEntry(draw) {
 }
 
 function buildNumberDetail(number, analysis) {
-  const drawList = appState.data.filter((d) => d.numero === number);
+  const drawList = getVisibleData().filter((d) => d.numero === number);
   const inverse = `${number[1]}${number[0]}`;
   const inverseSeen = analysis.frequency[inverse] > 0;
 
@@ -638,7 +687,7 @@ function renderTop(analysis) {
     pending.numbers.length === appState.currentTopFive.length &&
     pending.numbers.every((value, idx) => value === appState.currentTopFive[idx]);
   const shouldRefreshPending = !sameNumbers || !isPendingPredictionCurrent(pending, new Date());
-  if (shouldRefreshPending) {
+  if (shouldRefreshPending && isTimelineAtLatest()) {
     const nextDraw = getNextDrawInfo(new Date());
     const predictionId = `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
     savePendingPrediction({
@@ -959,6 +1008,7 @@ function renderAll(data, analysis) {
   renderAccordion(data);
   renderHistory(data);
   renderPredictionStats();
+  renderTimelineControls();
 }
 
 function setGridSortButtonLabel() {
@@ -978,6 +1028,8 @@ function showNoMonthlyData(monthKey) {
   els.historyBody.innerHTML = `<tr><td colspan=\"3\">Aún no hay sorteos para ${monthCap}. Puedes consultar el mes anterior para estimar el primer número de ${monthCap}.</td></tr>`;
   els.generatedPlay.textContent = "Sin jugada sugerida por falta de sorteos en el mes actual.";
   els.lastDrawHighlight.textContent = "Último sorteo: --";
+  appState.visibleDrawIndex = -1;
+  renderTimelineControls();
 }
 
 function generatePlay(analysis) {
@@ -1015,11 +1067,11 @@ async function refreshData(force = false) {
 
     resolvePredictionResults(data);
     const analysis = analyzeData(data);
-    appState = { ...appState, data, analysis };
+    appState = { ...appState, data, analysis, visibleDrawIndex: data.length - 1 };
     const monthCap = monthNameEs(monthKey).replace(/^./, (s) => s.toUpperCase());
     els.hourPanelTitle.textContent = `Panel por hora del mes de ${monthCap}`;
     els.historyTitle.textContent = `Historial del mes de ${monthCap}`;
-    renderAll(data, analysis);
+    renderByTimeline();
 
     const last = data[data.length - 1];
     const updatedAt = new Date().toLocaleString();
@@ -1058,6 +1110,16 @@ els.viewModeSelect?.addEventListener("change", (event) => {
   appState.viewMode = allowed.has(selectedView) ? selectedView : "default";
   localStorage.setItem(VIEW_MODE_KEY, appState.viewMode);
   if (appState.analysis) renderGrid(appState.analysis);
+});
+els.prevDrawBtn?.addEventListener("click", () => {
+  if (appState.visibleDrawIndex <= 0) return;
+  appState.visibleDrawIndex -= 1;
+  renderByTimeline();
+});
+els.nextDrawBtn?.addEventListener("click", () => {
+  if (appState.visibleDrawIndex >= appState.data.length - 1) return;
+  appState.visibleDrawIndex += 1;
+  renderByTimeline();
 });
 
 document.addEventListener("change", (event) => {
