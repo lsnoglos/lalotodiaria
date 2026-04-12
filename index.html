@@ -20,7 +20,7 @@
 
     <main class="layout">
       <section class="card span-2">
-        <h2>Tablero 00–99</h2>
+        <h2 class="board-title-small">Tablero 00 - 99</h2>
         <div class="grid-controls">
           <label for="gridColumnsSelect">Columnas</label>
           <select id="gridColumnsSelect">
@@ -51,19 +51,32 @@
           </button>
         </div>
         <div id="numberGrid" class="number-grid"></div>
+        <div class="time-travel-controls">
+          <button id="prevDrawBtn" class="btn secondary nav-btn" type="button" aria-label="Retroceder sorteo">
+            &larr;
+          </button>
+          <button id="nextDrawBtn" class="btn secondary nav-btn" type="button" aria-label="Adelantar sorteo">
+            &rarr;
+          </button>
+          <span id="timelineLabel" class="timeline-label">--</span>
+        </div>
       </section>
 
       <section class="card">
-        <h2>Top 5 del día</h2>
-        <ol id="topRecommendations" class="list"></ol>
-        <h3 class="subsection-title">Números sugeridos en tiempo real</h3>
-        <p class="hint realtime-hint">Se recalculan con el último número ganador y transición reciente.</p>
-        <ol id="realtimeRecommendations" class="list realtime-list"></ol>
+        <details>
+          <summary>Top 5 del día</summary>
+          <ol id="topRecommendations" class="list"></ol>
+          <h3 class="subsection-title">Números sugeridos en tiempo real</h3>
+          <p class="hint realtime-hint">Se recalculan con el último número ganador y transición reciente.</p>
+          <ol id="realtimeRecommendations" class="list realtime-list"></ol>
+        </details>
       </section>
 
       <section class="card">
-        <h2>Algoritmos visuales</h2>
-        <div id="algorithmPanels" class="algorithm-panels"></div>
+        <details>
+          <summary>Algoritmos visuales</summary>
+          <div id="algorithmPanels" class="algorithm-panels"></div>
+        </details>
       </section>
 
       <section class="card span-2">
@@ -92,22 +105,24 @@
       </section>
 
       <section class="card span-2">
-        <h2>Seguimiento de predicciones</h2>
-        <p id="predictionStatsSummary" class="hint">Aún no hay resultados registrados.</p>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Hora</th>
-                <th>Números sugeridos</th>
-                <th>Ganó</th>
-                <th>Resultado</th>
-              </tr>
-            </thead>
-            <tbody id="predictionStatsBody"></tbody>
-          </table>
-        </div>
+        <details>
+          <summary>Seguimiento de predicciones</summary>
+          <p id="predictionStatsSummary" class="hint">Aún no hay resultados registrados.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Números sugeridos</th>
+                  <th>Ganó</th>
+                  <th>Resultado</th>
+                </tr>
+              </thead>
+              <tbody id="predictionStatsBody"></tbody>
+            </table>
+          </div>
+        </details>
       </section>
 
       <section class="card span-2">
@@ -125,7 +140,7 @@
     </main>
 
     <template id="accordionTemplate">
-      <details open>
+      <details>
         <summary></summary>
         <div class="accordion-content"></div>
       </details>
