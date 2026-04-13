@@ -32,6 +32,7 @@ let appState = {
   gridStartWith: "01",
   viewMode: "default",
   personalGameNumbers: [],
+  activeSequenceDraws: [],
 };
 
 const els = {
@@ -62,6 +63,13 @@ const els = {
   personalGameSummary: document.getElementById("personalGameSummary"),
   personalGameNumbers: document.getElementById("personalGameNumbers"),
   clearPersonalGameBtn: document.getElementById("clearPersonalGameBtn"),
+  sequenceStartDate: document.getElementById("sequenceStartDate"),
+  sequenceStartHour: document.getElementById("sequenceStartHour"),
+  sequenceEndDate: document.getElementById("sequenceEndDate"),
+  sequenceEndHour: document.getElementById("sequenceEndHour"),
+  drawSequenceBtn: document.getElementById("drawSequenceBtn"),
+  resetSequenceBtn: document.getElementById("resetSequenceBtn"),
+  sequenceStatus: document.getElementById("sequenceStatus"),
 };
 
 function getVisibleData() {
@@ -566,8 +574,10 @@ function renderGrid(analysis) {
       showGridTooltip(`${detail}<br>${control}`, event.clientX, event.clientY);
     });
     if (isPersonalNumberSelected(number)) div.classList.add("selected-personal");
+    div.dataset.number = number;
     els.numberGrid.appendChild(div);
   });
+  renderSequenceOverlay();
 }
 
 function renderColorSequenceCell(number, colorSequenceMap) {
@@ -715,10 +725,12 @@ function renderMonthTrendChart(data) {
 
   const draws = Array.isArray(data) ? data : [];
   const width = canvas.clientWidth || canvas.parentElement?.clientWidth || 600;
-  const height = canvas.height || 230;
+  const viewportHeight = window.innerHeight || 800;
+  const height = Math.max(140, Math.min(220, Math.floor(viewportHeight * 0.45)));
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.floor(width * dpr);
   canvas.height = Math.floor(height * dpr);
+  canvas.style.height = `${height}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
@@ -735,7 +747,7 @@ function renderMonthTrendChart(data) {
 
   ctx.strokeStyle = "rgba(148, 163, 184, 0.25)";
   ctx.lineWidth = 1;
-  [0, 25, 50, 75, 99].forEach((tick) => {
+  [0, 20, 40, 60, 80, 99].forEach((tick) => {
     const y = toY(tick);
     ctx.beginPath();
     ctx.moveTo(leftPad, y);
@@ -747,7 +759,7 @@ function renderMonthTrendChart(data) {
   ctx.font = "11px Inter, system-ui, sans-serif";
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  [99, 75, 50, 25, 0].forEach((tick) => {
+  [99, 80, 60, 40, 20, 0].forEach((tick) => {
     ctx.fillText(String(tick), leftPad - 6, toY(tick));
   });
 
@@ -779,6 +791,106 @@ function renderMonthTrendChart(data) {
   ctx.beginPath();
   ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2);
   ctx.fill();
+
+  const labelStep = Math.max(1, Math.ceil(draws.length / Math.max(4, Math.floor(plotWidth / 62))));
+  ctx.fillStyle = "#93c5fd";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.font = "10px Inter, system-ui, sans-serif";
+  draws.forEach((draw, index) => {
+    const isLast = index === draws.length - 1;
+    if (!isLast && index % labelStep !== 0) return;
+    const x = leftPad + xStep * index;
+    const day = String(Number(draw.fecha.split("-")[2] || "0")).padStart(2, "0");
+    const label = `${day}(${draw.numero})`;
+    ctx.save();
+    ctx.translate(x, height - bottomPad + 4);
+    ctx.rotate(-Math.PI / 5);
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+  });
+}
+
+function buildSequenceDate(dateInput, hourKey) {
+  if (!dateInput || !hourKey) return null;
+  const [year, month, day] = dateInput.split("-").map(Number);
+  const schedule = GAME_SCHEDULE[hourKey];
+  if (!year || !month || !day || !schedule) return null;
+  return new Date(year, month - 1, day, schedule.hour, schedule.minute, 0, 0);
+}
+
+function getSequenceDrawsInRange() {
+  const start = buildSequenceDate(els.sequenceStartDate?.value, els.sequenceStartHour?.value);
+  const end = buildSequenceDate(els.sequenceEndDate?.value, els.sequenceEndHour?.value);
+  if (!start || !end || end < start) return { draws: [], error: "Rango inválido: revisa fechas y juegos." };
+  const draws = appState.data.filter((draw) => {
+    const drawAt = drawToDate(draw);
+    return drawAt >= start && drawAt <= end;
+  });
+  if (draws.length < 2) return { draws: [], error: "Necesitas al menos 2 sorteos en el rango para trazar la línea." };
+  return { draws, error: "" };
+}
+
+function renderSequenceOverlay() {
+  const previous = els.numberGrid.querySelector(".sequence-overlay");
+  if (previous) previous.remove();
+  if (!appState.activeSequenceDraws.length) return;
+
+  const gridRect = els.numberGrid.getBoundingClientRect();
+  if (!gridRect.width || !gridRect.height) return;
+  const points = appState.activeSequenceDraws
+    .map((draw) => {
+      const cell = els.numberGrid.querySelector(`.cell[data-number="${draw.numero}"]`);
+      if (!cell) return null;
+      const rect = cell.getBoundingClientRect();
+      return {
+        x: rect.left - gridRect.left + rect.width / 2,
+        y: rect.top - gridRect.top + rect.height / 2,
+      };
+    })
+    .filter(Boolean);
+
+  if (points.length < 2) return;
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "sequence-overlay");
+  svg.setAttribute("viewBox", `0 0 ${gridRect.width} ${gridRect.height}`);
+  svg.setAttribute("width", `${gridRect.width}`);
+  svg.setAttribute("height", `${gridRect.height}`);
+
+  const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  polyline.setAttribute("points", points.map((point) => `${point.x},${point.y}`).join(" "));
+  polyline.setAttribute("fill", "none");
+  polyline.setAttribute("stroke", "#fde047");
+  polyline.setAttribute("stroke-width", "3");
+  polyline.setAttribute("stroke-linecap", "round");
+  polyline.setAttribute("stroke-linejoin", "round");
+  polyline.setAttribute("filter", "drop-shadow(0 0 4px rgba(253,224,71,0.85))");
+  svg.appendChild(polyline);
+  els.numberGrid.appendChild(svg);
+}
+
+function resetSequence() {
+  appState.activeSequenceDraws = [];
+  renderSequenceOverlay();
+  if (els.sequenceStatus) els.sequenceStatus.textContent = "Secuencia reiniciada.";
+}
+
+function applySequenceRange() {
+  const { draws, error } = getSequenceDrawsInRange();
+  if (error) {
+    appState.activeSequenceDraws = [];
+    renderSequenceOverlay();
+    if (els.sequenceStatus) els.sequenceStatus.textContent = error;
+    return;
+  }
+  appState.activeSequenceDraws = draws;
+  renderSequenceOverlay();
+  const from = draws[0];
+  const to = draws[draws.length - 1];
+  if (els.sequenceStatus) {
+    els.sequenceStatus.textContent = `Secuencia activa: ${draws.length} sorteos (${from.fecha} ${HOUR_LABELS[from.hora]} → ${to.fecha} ${HOUR_LABELS[to.hora]}).`;
+  }
 }
 
 function buildRealtimeSuggestions(data, analysis, limit = 2) {
@@ -1136,6 +1248,7 @@ async function refreshData(force = false) {
 
     if (!data.length) {
       appState = { ...appState, data: [], analysis: null };
+      resetSequence();
       showNoMonthlyData(monthKey);
       els.status.textContent = `Sin sorteos para ${monthKey}.`;
       return;
@@ -1147,6 +1260,7 @@ async function refreshData(force = false) {
     const monthCap = monthNameEs(monthKey).replace(/^./, (s) => s.toUpperCase());
     els.hourPanelTitle.textContent = `Panel por hora del mes de ${monthCap}`;
     els.historyTitle.textContent = `Historial del mes de ${monthCap}`;
+    presetSequenceRangeFromLatest();
     renderByTimeline();
 
     const last = data[data.length - 1];
@@ -1187,6 +1301,12 @@ els.viewModeSelect?.addEventListener("change", (event) => {
   localStorage.setItem(VIEW_MODE_KEY, appState.viewMode);
   if (appState.analysis) renderGrid(appState.analysis);
 });
+els.drawSequenceBtn?.addEventListener("click", () => {
+  applySequenceRange();
+});
+els.resetSequenceBtn?.addEventListener("click", () => {
+  resetSequence();
+});
 els.prevDrawBtn?.addEventListener("click", () => {
   if (appState.visibleDrawIndex <= 0) return;
   appState.visibleDrawIndex -= 1;
@@ -1218,6 +1338,10 @@ document.addEventListener("click", (event) => {
   if (event.target.closest(".cell") || event.target.closest(".grid-tooltip")) return;
   closeGridTooltip();
 });
+window.addEventListener("resize", () => {
+  if (appState.analysis) renderMonthTrendChart(getVisibleData());
+  renderSequenceOverlay();
+});
 
 els.clearPersonalGameBtn?.addEventListener("click", () => {
   if (!appState.personalGameNumbers.length) return;
@@ -1230,13 +1354,18 @@ els.clearPersonalGameBtn?.addEventListener("click", () => {
   if (appState.analysis) renderGrid(appState.analysis);
 });
 
-window.addEventListener("resize", () => {
-  renderMonthTrendChart(getVisibleData());
-});
-
 appState.personalGameNumbers = loadPersonalGameNumbers();
 const savedView = localStorage.getItem(VIEW_MODE_KEY) || "default";
 appState.viewMode = ["default", "colorSequence", "numberSequence"].includes(savedView) ? savedView : "default";
 if (els.viewModeSelect) els.viewModeSelect.value = appState.viewMode;
+
+function presetSequenceRangeFromLatest() {
+  const latest = appState.data[appState.data.length - 1];
+  if (!latest || !els.sequenceStartDate || !els.sequenceEndDate || !els.sequenceStartHour || !els.sequenceEndHour) return;
+  els.sequenceStartDate.value = latest.fecha;
+  els.sequenceEndDate.value = latest.fecha;
+  els.sequenceStartHour.value = "12PM";
+  els.sequenceEndHour.value = latest.hora;
+}
 refreshData();
 setGridSortButtonLabel();
