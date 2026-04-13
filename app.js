@@ -70,6 +70,8 @@ const els = {
   resetSequenceBtn: document.getElementById("resetSequenceBtn"),
   sequenceBackDayBtn: document.getElementById("sequenceBackDayBtn"),
   sequenceForwardDayBtn: document.getElementById("sequenceForwardDayBtn"),
+  sequenceBackRangeBtn: document.getElementById("sequenceBackRangeBtn"),
+  sequenceForwardRangeBtn: document.getElementById("sequenceForwardRangeBtn"),
   sequenceStatus: document.getElementById("sequenceStatus"),
 };
 
@@ -873,6 +875,49 @@ function shiftSequenceStartDay(days) {
   applySequenceRange();
 }
 
+function setSequenceInputsFromDrawRange(startDraw, endDraw) {
+  if (!startDraw || !endDraw) return;
+  if (!els.sequenceStartDate || !els.sequenceEndDate || !els.sequenceStartHour || !els.sequenceEndHour) return;
+  els.sequenceStartDate.value = startDraw.fecha;
+  els.sequenceStartHour.value = startDraw.hora;
+  els.sequenceEndDate.value = endDraw.fecha;
+  els.sequenceEndHour.value = endDraw.hora;
+}
+
+function shiftSequenceBySelectedSpan(direction) {
+  if (direction !== -1 && direction !== 1) return;
+  const { draws, error } = getSequenceDrawsInRange();
+  if (error) {
+    if (els.sequenceStatus) els.sequenceStatus.textContent = error;
+    return;
+  }
+
+  const spanSize = draws.length;
+  const firstIndex = appState.data.indexOf(draws[0]);
+  const lastIndex = appState.data.indexOf(draws[draws.length - 1]);
+  if (firstIndex < 0 || lastIndex < 0) return;
+
+  let nextStartIndex;
+  let nextEndIndex;
+  if (direction < 0) {
+    nextStartIndex = firstIndex - spanSize;
+    nextEndIndex = firstIndex - 1;
+  } else {
+    nextStartIndex = lastIndex + 1;
+    nextEndIndex = lastIndex + spanSize;
+  }
+
+  if (nextStartIndex < 0 || nextEndIndex >= appState.data.length) {
+    if (els.sequenceStatus) {
+      els.sequenceStatus.textContent = "No hay suficientes sorteos para mover ese mismo rango en esa dirección.";
+    }
+    return;
+  }
+
+  setSequenceInputsFromDrawRange(appState.data[nextStartIndex], appState.data[nextEndIndex]);
+  applySequenceRange();
+}
+
 function buildRealtimeSuggestions(data, analysis, limit = 2) {
   if (!Array.isArray(data) || data.length < 2 || !analysis) return [];
 
@@ -1291,6 +1336,12 @@ els.sequenceBackDayBtn?.addEventListener("click", () => {
 });
 els.sequenceForwardDayBtn?.addEventListener("click", () => {
   shiftSequenceStartDay(1);
+});
+els.sequenceBackRangeBtn?.addEventListener("click", () => {
+  shiftSequenceBySelectedSpan(-1);
+});
+els.sequenceForwardRangeBtn?.addEventListener("click", () => {
+  shiftSequenceBySelectedSpan(1);
 });
 els.prevDrawBtn?.addEventListener("click", () => {
   if (appState.visibleDrawIndex <= 0) return;
