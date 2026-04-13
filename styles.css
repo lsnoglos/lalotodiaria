@@ -21,6 +21,8 @@ body {
   color: var(--text);
 }
 
+
+
 .app-header {
   padding: 1rem;
   border-bottom: 1px solid #273a67;
@@ -29,6 +31,37 @@ body {
   background: rgba(8, 18, 41, 0.95);
   backdrop-filter: blur(6px);
   z-index: 10;
+  transition: padding 0.35s ease, background-color 0.35s ease, border-color 0.35s ease;
+}
+
+.header-expanded {
+  overflow: hidden;
+  max-height: 220px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: max-height 0.35s ease, opacity 0.25s ease, transform 0.25s ease;
+}
+
+.header-core {
+  transition: transform 0.35s ease;
+}
+
+.app-header.is-compact {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+  background: rgba(8, 18, 41, 0.88);
+  border-bottom-color: #304a82;
+}
+
+.app-header.is-compact .header-expanded {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+}
+
+.app-header.is-compact .header-core {
+  transform: translateY(-2px);
 }
 
 h1, h2, p { margin: 0.2rem 0; }
@@ -105,7 +138,8 @@ h1, h2, p { margin: 0.2rem 0; }
   padding: 0.4rem 0.45rem;
 }
 
-.status { color: var(--muted); display: block; margin-top: 0.25rem; }
+.status { color: var(--muted); display: block; margin-top: 0.25rem; opacity: 1; transition: opacity 0.2s ease; }
+.app-header.is-compact .status { opacity: 0; pointer-events: none; height: 0; margin: 0; overflow: hidden; }
 .last-draw-highlight {
   margin-top: 0.4rem;
   font-size: 1rem;

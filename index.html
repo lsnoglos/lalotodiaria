@@ -7,14 +7,18 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="app-header">
-      <h1 class="app-title">Analizador Loto Diaria</h1>
-      <div class="controls">
-        <button id="refreshBtn" class="btn primary">Actualizar sorteo</button>
-        <button id="generatePlayBtn" class="btn accent">Generar Jugada</button>
+    <header class="app-header" id="appHeader">
+      <div class="header-expanded">
+        <h1 class="app-title">Analizador Loto Diaria</h1>
+        <div class="controls">
+          <button id="refreshBtn" class="btn primary">Actualizar sorteo</button>
+          <button id="generatePlayBtn" class="btn accent">Generar Jugada</button>
+        </div>
       </div>
-      <p id="generatedPlay" class="generated-play">Recomendado para las 12:00pm: --, --, --, --, --.</p>
-      <p id="lastDrawHighlight" class="last-draw-highlight">Último sorteo: --</p>
+      <div class="header-core">
+        <p id="generatedPlay" class="generated-play">Recomendado para las 12:00pm: --, --, --, --, --.</p>
+        <p id="lastDrawHighlight" class="last-draw-highlight">Último sorteo: --</p>
+      </div>
       <small id="status" class="status">Inicializando…</small>
     </header>
 

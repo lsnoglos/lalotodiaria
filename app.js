@@ -35,6 +35,7 @@ let appState = {
 };
 
 const els = {
+  appHeader: document.getElementById("appHeader"),
   status: document.getElementById("status"),
   refreshBtn: document.getElementById("refreshBtn"),
   generatePlayBtn: document.getElementById("generatePlayBtn"),
@@ -1395,6 +1396,14 @@ const savedView = localStorage.getItem(VIEW_MODE_KEY) || "default";
 appState.viewMode = ["default", "colorSequence", "numberSequence"].includes(savedView) ? savedView : "default";
 if (els.viewModeSelect) els.viewModeSelect.value = appState.viewMode;
 
+
+
+function applyHeaderScrollEffect() {
+  if (!els.appHeader) return;
+  const compact = window.scrollY > 28;
+  els.appHeader.classList.toggle("is-compact", compact);
+}
+
 function presetSequenceRangeForToday() {
   if (!els.sequenceStartDate || !els.sequenceEndDate || !els.sequenceStartHour || !els.sequenceEndHour) return;
   const now = new Date();
@@ -1405,5 +1414,7 @@ function presetSequenceRangeForToday() {
   els.sequenceEndHour.value = "9PM";
   applySequenceRange();
 }
+window.addEventListener("scroll", applyHeaderScrollEffect, { passive: true });
+applyHeaderScrollEffect();
 refreshData();
 setGridSortButtonLabel();
