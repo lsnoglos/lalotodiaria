@@ -153,6 +153,22 @@ h1, h2, p { margin: 0.2rem 0; }
   z-index: 3;
 }
 
+.animated-sequence-line {
+  stroke-dasharray: 12 6;
+  animation: sequenceFlow 0.8s ease-out;
+}
+
+@keyframes sequenceFlow {
+  from {
+    stroke-dashoffset: 40;
+    opacity: 0.25;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
 .cell {
   text-align: center;
   padding: 0.35rem 0.15rem;
@@ -317,18 +333,23 @@ h1, h2, p { margin: 0.2rem 0; }
 
 .sequence-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.35rem 0.45rem;
-  align-items: center;
+  gap: 0.4rem;
 }
 
-.sequence-grid label {
+.sequence-row {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.sequence-row label {
   font-size: 0.75rem;
   color: #bfdbfe;
 }
 
-.sequence-grid input,
-.sequence-grid select {
+.sequence-row input,
+.sequence-row select {
   width: 100%;
   background: #0b1220;
   border: 1px solid #375282;
@@ -341,11 +362,12 @@ h1, h2, p { margin: 0.2rem 0; }
 .sequence-actions {
   margin-top: 0.5rem;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
 }
 
 .sequence-actions .btn {
-  flex: 1;
+  flex: 1 1 160px;
   min-height: 2rem;
 }
 

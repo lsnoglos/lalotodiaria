@@ -33,7 +33,17 @@
             <option value="8">8</option>
             <option value="9">9</option>
             <option value="10" selected>10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
             <option value="15">15</option>
+            <option value="16">16</option>
+            <option value="17">17</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+            <option value="20">20</option>
+            <option value="25">25</option>
           </select>
           <label for="gridStartSelect">Inicia con</label>
           <select id="gridStartSelect">
@@ -63,26 +73,30 @@
         <div class="sequence-controls">
           <h3 class="sequence-title">Trazo secuencial</h3>
           <div class="sequence-grid">
-            <label for="sequenceStartDate">Fecha inicio</label>
-            <input id="sequenceStartDate" type="date" />
-            <label for="sequenceStartHour">Juego inicio</label>
-            <select id="sequenceStartHour">
-              <option value="12PM">12:00pm</option>
-              <option value="3PM">3:00pm</option>
-              <option value="6PM">6:00pm</option>
-              <option value="9PM">9:00pm</option>
-            </select>
-            <label for="sequenceEndDate">Fecha final</label>
-            <input id="sequenceEndDate" type="date" />
-            <label for="sequenceEndHour">Juego final</label>
-            <select id="sequenceEndHour">
-              <option value="12PM">12:00pm</option>
-              <option value="3PM">3:00pm</option>
-              <option value="6PM">6:00pm</option>
-              <option value="9PM">9:00pm</option>
-            </select>
+            <div class="sequence-row">
+              <label for="sequenceStartDate">Inicio</label>
+              <input id="sequenceStartDate" type="date" />
+              <select id="sequenceStartHour">
+                <option value="12PM">12:00pm</option>
+                <option value="3PM">3:00pm</option>
+                <option value="6PM">6:00pm</option>
+                <option value="9PM">9:00pm</option>
+              </select>
+            </div>
+            <div class="sequence-row">
+              <label for="sequenceEndDate">Fin</label>
+              <input id="sequenceEndDate" type="date" />
+              <select id="sequenceEndHour">
+                <option value="12PM">12:00pm</option>
+                <option value="3PM">3:00pm</option>
+                <option value="6PM">6:00pm</option>
+                <option value="9PM">9:00pm</option>
+              </select>
+            </div>
           </div>
           <div class="sequence-actions">
+            <button id="sequenceBackDayBtn" class="btn secondary" type="button">← Inicio -1 día</button>
+            <button id="sequenceForwardDayBtn" class="btn secondary" type="button">Inicio +1 día →</button>
             <button id="drawSequenceBtn" class="btn secondary" type="button">Trazar línea</button>
             <button id="resetSequenceBtn" class="btn secondary" type="button">Reset</button>
           </div>
