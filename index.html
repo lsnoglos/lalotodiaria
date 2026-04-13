@@ -60,14 +60,42 @@
           </button>
           <span id="timelineLabel" class="timeline-label">--</span>
         </div>
+        <div class="sequence-controls">
+          <h3 class="sequence-title">Trazo secuencial</h3>
+          <div class="sequence-grid">
+            <label for="sequenceStartDate">Fecha inicio</label>
+            <input id="sequenceStartDate" type="date" />
+            <label for="sequenceStartHour">Juego inicio</label>
+            <select id="sequenceStartHour">
+              <option value="12PM">12:00pm</option>
+              <option value="3PM">3:00pm</option>
+              <option value="6PM">6:00pm</option>
+              <option value="9PM">9:00pm</option>
+            </select>
+            <label for="sequenceEndDate">Fecha final</label>
+            <input id="sequenceEndDate" type="date" />
+            <label for="sequenceEndHour">Juego final</label>
+            <select id="sequenceEndHour">
+              <option value="12PM">12:00pm</option>
+              <option value="3PM">3:00pm</option>
+              <option value="6PM">6:00pm</option>
+              <option value="9PM">9:00pm</option>
+            </select>
+          </div>
+          <div class="sequence-actions">
+            <button id="drawSequenceBtn" class="btn secondary" type="button">Trazar línea</button>
+            <button id="resetSequenceBtn" class="btn secondary" type="button">Reset</button>
+          </div>
+          <p id="sequenceStatus" class="hint sequence-status">Selecciona un rango para trazar la secuencia.</p>
+        </div>
       </section>
 
       <section class="card span-2">
         <details>
           <summary>Gráfica de comportamiento del mes (0-99)</summary>
-          <p class="hint chart-hint">Eje izquierdo: valores de 0 a 99. La línea conecta cada número jugado en orden cronológico.</p>
+          <p class="hint chart-hint">Eje izquierdo: escala 00-99. Eje inferior: día del mes y número entre paréntesis.</p>
           <div class="month-chart-wrap">
-            <canvas id="monthTrendChart" height="230" aria-label="Gráfica de tendencia mensual de números" role="img"></canvas>
+            <canvas id="monthTrendChart" aria-label="Gráfica de tendencia mensual de números" role="img"></canvas>
           </div>
         </details>
       </section>
