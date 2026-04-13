@@ -30,6 +30,7 @@ let appState = {
   gridSortDirection: "asc",
   gridStartWith: "01",
   viewMode: "default",
+  hourFilter: "ALL",
   personalGameNumbers: [],
   activeSequenceDraws: [],
 };
@@ -43,6 +44,7 @@ const els = {
   prevDrawBtn: document.getElementById("prevDrawBtn"),
   nextDrawBtn: document.getElementById("nextDrawBtn"),
   timelineLabel: document.getElementById("timelineLabel"),
+  hourFilterSelect: document.getElementById("hourFilterSelect"),
   topRecommendations: document.getElementById("topRecommendations"),
   realtimeRecommendations: document.getElementById("realtimeRecommendations"),
   generatedPlay: document.getElementById("generatedPlay"),
@@ -69,8 +71,6 @@ const els = {
   sequenceEndHour: document.getElementById("sequenceEndHour"),
   drawSequenceBtn: document.getElementById("drawSequenceBtn"),
   resetSequenceBtn: document.getElementById("resetSequenceBtn"),
-  sequenceBackDayBtn: document.getElementById("sequenceBackDayBtn"),
-  sequenceForwardDayBtn: document.getElementById("sequenceForwardDayBtn"),
   sequenceBackRangeBtn: document.getElementById("sequenceBackRangeBtn"),
   sequenceForwardRangeBtn: document.getElementById("sequenceForwardRangeBtn"),
   sequenceStatus: document.getElementById("sequenceStatus"),
@@ -403,8 +403,8 @@ function formatDrawEntry(draw) {
   return `Jugó el ${day} - ${month} - ${shortYear} a las ${label}`;
 }
 
-function buildNumberDetail(number, analysis) {
-  const drawList = getVisibleData().filter((d) => d.numero === number);
+function buildNumberDetail(number, analysis, sourceData = getVisibleData()) {
+  const drawList = sourceData.filter((d) => d.numero === number);
   const inverse = `${number[1]}${number[0]}`;
   const inverseSeen = analysis.frequency[inverse] > 0;
 
@@ -515,21 +515,30 @@ function renderPersonalGameSection() {
     .join("");
 }
 
+function getGridFilteredData(sourceData) {
+  if (!Array.isArray(sourceData)) return [];
+  if (appState.hourFilter === "ALL") return sourceData;
+  return sourceData.filter((draw) => draw.hora === appState.hourFilter);
+}
+
 function renderGrid(analysis) {
+  const visibleData = getVisibleData();
+  const filteredGridData = getGridFilteredData(visibleData);
+  const gridAnalysis = analyzeData(filteredGridData);
   els.numberGrid.innerHTML = "";
   els.numberGrid.style.gridTemplateColumns = `repeat(${appState.gridColumns}, minmax(0, 1fr))`;
-  const colorSequenceMap = appState.viewMode === "colorSequence" ? buildColorSequenceMap(appState.data) : null;
-  const numberSequenceMap = appState.viewMode === "numberSequence" ? buildNumberSequenceMap(appState.data) : null;
+  const colorSequenceMap = appState.viewMode === "colorSequence" ? buildColorSequenceMap(filteredGridData) : null;
+  const numberSequenceMap = appState.viewMode === "numberSequence" ? buildNumberSequenceMap(filteredGridData) : null;
 
   const numbersByStart =
     appState.gridStartWith === "01"
-      ? [...analysis.allNumbers.slice(1), analysis.allNumbers[0]]
-      : analysis.allNumbers.slice();
+      ? [...gridAnalysis.allNumbers.slice(1), gridAnalysis.allNumbers[0]]
+      : gridAnalysis.allNumbers.slice();
   const orderedNumbers = appState.gridSortDirection === "desc" ? numbersByStart.slice().reverse() : numbersByStart;
 
   orderedNumbers.forEach((number) => {
     const div = document.createElement("div");
-    div.className = `cell ${cellClass(number, analysis)}`.trim();
+    div.className = `cell ${cellClass(number, gridAnalysis)}`.trim();
     if (appState.viewMode === "colorSequence") {
       div.innerHTML = renderColorSequenceCell(number, colorSequenceMap);
     } else if (appState.viewMode === "numberSequence") {
@@ -538,7 +547,7 @@ function renderGrid(analysis) {
       div.textContent = number;
     }
     div.addEventListener("click", (event) => {
-      const detail = buildNumberDetail(number, analysis);
+      const detail = buildNumberDetail(number, gridAnalysis, filteredGridData);
       const control = buildPersonalGameControl(number);
       showGridTooltip(`${detail}<br>${control}`, event.clientX, event.clientY);
     });
@@ -861,19 +870,6 @@ function applySequenceRange() {
   if (els.sequenceStatus) {
     els.sequenceStatus.textContent = `Secuencia activa: ${draws.length} sorteos (${from.fecha} ${HOUR_LABELS[from.hora]} → ${to.fecha} ${HOUR_LABELS[to.hora]}).`;
   }
-}
-
-function shiftSequenceStartDay(days) {
-  if (!els.sequenceStartDate?.value || !Number.isInteger(days)) return;
-  const [year, month, day] = els.sequenceStartDate.value.split("-").map(Number);
-  const startDate = new Date(year, (month || 1) - 1, day || 1, 12, 0, 0, 0);
-  if (Number.isNaN(startDate.getTime())) return;
-  startDate.setDate(startDate.getDate() + days);
-  const nextValue = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(
-    startDate.getDate()
-  ).padStart(2, "0")}`;
-  els.sequenceStartDate.value = nextValue;
-  applySequenceRange();
 }
 
 function setSequenceInputsFromDrawRange(startDraw, endDraw) {
@@ -1332,17 +1328,17 @@ els.drawSequenceBtn?.addEventListener("click", () => {
 els.resetSequenceBtn?.addEventListener("click", () => {
   resetSequence();
 });
-els.sequenceBackDayBtn?.addEventListener("click", () => {
-  shiftSequenceStartDay(-1);
-});
-els.sequenceForwardDayBtn?.addEventListener("click", () => {
-  shiftSequenceStartDay(1);
-});
 els.sequenceBackRangeBtn?.addEventListener("click", () => {
   shiftSequenceBySelectedSpan(-1);
 });
 els.sequenceForwardRangeBtn?.addEventListener("click", () => {
   shiftSequenceBySelectedSpan(1);
+});
+els.hourFilterSelect?.addEventListener("change", (event) => {
+  const selectedHour = event.target.value;
+  const allowed = new Set(["ALL", ...HOURS]);
+  appState.hourFilter = allowed.has(selectedHour) ? selectedHour : "ALL";
+  if (appState.analysis) renderGrid(appState.analysis);
 });
 els.prevDrawBtn?.addEventListener("click", () => {
   if (appState.visibleDrawIndex <= 0) return;
@@ -1395,6 +1391,7 @@ appState.personalGameNumbers = loadPersonalGameNumbers();
 const savedView = localStorage.getItem(VIEW_MODE_KEY) || "default";
 appState.viewMode = ["default", "colorSequence", "numberSequence"].includes(savedView) ? savedView : "default";
 if (els.viewModeSelect) els.viewModeSelect.value = appState.viewMode;
+if (els.hourFilterSelect) els.hourFilterSelect.value = appState.hourFilter;
 
 
 
