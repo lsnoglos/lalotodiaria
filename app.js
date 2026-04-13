@@ -6,7 +6,6 @@ const SOURCE_PROXY_URLS = [
 ];
 const CACHE_KEY = "lotoData";
 const CACHE_TIME_KEY = "lotoDataUpdatedAt";
-const FORCED_UPDATE_KEY = "lotoForcedUpdateAt";
 const PREDICTION_PENDING_KEY = "lotoPredictionPending";
 const PREDICTION_RESULTS_KEY = "lotoPredictionResults";
 const PERSONAL_GAME_KEY = "lotoPersonalGameNumbers";
@@ -69,6 +68,8 @@ const els = {
   sequenceEndHour: document.getElementById("sequenceEndHour"),
   drawSequenceBtn: document.getElementById("drawSequenceBtn"),
   resetSequenceBtn: document.getElementById("resetSequenceBtn"),
+  sequenceBackDayBtn: document.getElementById("sequenceBackDayBtn"),
+  sequenceForwardDayBtn: document.getElementById("sequenceForwardDayBtn"),
   sequenceStatus: document.getElementById("sequenceStatus"),
 };
 
@@ -216,50 +217,15 @@ function getPassedGameSlots(fromDate, toDate) {
   return slots.sort((a, b) => a.at - b.at);
 }
 
-function shouldForceRefreshBySchedule(lastKnownDraw = null) {
-  const now = new Date();
-  const lastForced = Number(localStorage.getItem(FORCED_UPDATE_KEY) || 0);
-  const forcedDate = lastForced ? new Date(lastForced) : null;
-
-  if (!lastForced || !forcedDate || Number.isNaN(forcedDate.getTime())) {
-    return { shouldUpdate: true, reason: "Primera actualización manual." };
-  }
-
-  if (forcedDate > now) {
-    return { shouldUpdate: true, reason: "Se detectó hora guardada en el futuro; se reintenta actualización." };
-  }
-
-  const passedSinceForce = getPassedGameSlots(forcedDate, now);
-  if (passedSinceForce.length > 0) {
-    const lastSlot = passedSinceForce[passedSinceForce.length - 1];
-    return { shouldUpdate: true, reason: `Ya pasó el sorteo de ${GAME_SCHEDULE[lastSlot.hourKey].label}.` };
-  }
-
-  if (lastKnownDraw) {
-    const drawDate = drawToDate(lastKnownDraw);
-    if (!Number.isNaN(drawDate.getTime()) && drawDate < now) {
-      const passedSinceLastDraw = getPassedGameSlots(drawDate, now);
-      if (passedSinceLastDraw.length > 0) {
-        const lastSlot = passedSinceLastDraw[passedSinceLastDraw.length - 1];
-        return {
-          shouldUpdate: true,
-          reason: `El último sorteo guardado es anterior al horario de ${GAME_SCHEDULE[lastSlot.hourKey].label}.`,
-        };
-      }
-    }
-  }
-
-  return { shouldUpdate: false, reason: "Aún no pasa el próximo horario de sorteo desde la última actualización." };
-}
-
-async function fetchHistoryHtml(monthKey) {
+async function fetchHistoryHtml(monthKey, force = false) {
   const body = new URLSearchParams({
     _method: "POST",
     "data[Lottery][name]": "Loto Diaria",
     "data[Lottery][date]": monthKey,
   });
 
-  const attempts = [SOURCE_URL, ...SOURCE_PROXY_URLS.map((buildUrl) => buildUrl(SOURCE_URL))];
+  const sourceUrl = force ? `${SOURCE_URL}?_ts=${Date.now()}` : SOURCE_URL;
+  const attempts = [sourceUrl, ...SOURCE_PROXY_URLS.map((buildUrl) => buildUrl(sourceUrl))];
   const errors = [];
 
   for (const requestUrl of attempts) {
@@ -866,6 +832,7 @@ function renderSequenceOverlay() {
   polyline.setAttribute("stroke-linecap", "round");
   polyline.setAttribute("stroke-linejoin", "round");
   polyline.setAttribute("filter", "drop-shadow(0 0 4px rgba(253,224,71,0.85))");
+  polyline.classList.add("animated-sequence-line");
   svg.appendChild(polyline);
   els.numberGrid.appendChild(svg);
 }
@@ -891,6 +858,19 @@ function applySequenceRange() {
   if (els.sequenceStatus) {
     els.sequenceStatus.textContent = `Secuencia activa: ${draws.length} sorteos (${from.fecha} ${HOUR_LABELS[from.hora]} → ${to.fecha} ${HOUR_LABELS[to.hora]}).`;
   }
+}
+
+function shiftSequenceStartDay(days) {
+  if (!els.sequenceStartDate?.value || !Number.isInteger(days)) return;
+  const [year, month, day] = els.sequenceStartDate.value.split("-").map(Number);
+  const startDate = new Date(year, (month || 1) - 1, day || 1, 12, 0, 0, 0);
+  if (Number.isNaN(startDate.getTime())) return;
+  startDate.setDate(startDate.getDate() + days);
+  const nextValue = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(
+    startDate.getDate()
+  ).padStart(2, "0")}`;
+  els.sequenceStartDate.value = nextValue;
+  applySequenceRange();
 }
 
 function buildRealtimeSuggestions(data, analysis, limit = 2) {
@@ -1238,10 +1218,9 @@ async function refreshData(force = false) {
     let data = !force ? loadFromCache(monthKey) : null;
 
     if (!data) {
-      const html = await fetchHistoryHtml(monthKey);
+      const html = await fetchHistoryHtml(monthKey, force);
       data = parseLotteryHtml(html, monthKey);
       saveToCache(monthKey, data);
-      if (force) localStorage.setItem(FORCED_UPDATE_KEY, String(Date.now()));
     }
 
     appState.activeMonth = monthKey;
@@ -1260,7 +1239,7 @@ async function refreshData(force = false) {
     const monthCap = monthNameEs(monthKey).replace(/^./, (s) => s.toUpperCase());
     els.hourPanelTitle.textContent = `Panel por hora del mes de ${monthCap}`;
     els.historyTitle.textContent = `Historial del mes de ${monthCap}`;
-    presetSequenceRangeFromLatest();
+    presetSequenceRangeForToday();
     renderByTimeline();
 
     const last = data[data.length - 1];
@@ -1306,6 +1285,12 @@ els.drawSequenceBtn?.addEventListener("click", () => {
 });
 els.resetSequenceBtn?.addEventListener("click", () => {
   resetSequence();
+});
+els.sequenceBackDayBtn?.addEventListener("click", () => {
+  shiftSequenceStartDay(-1);
+});
+els.sequenceForwardDayBtn?.addEventListener("click", () => {
+  shiftSequenceStartDay(1);
 });
 els.prevDrawBtn?.addEventListener("click", () => {
   if (appState.visibleDrawIndex <= 0) return;
@@ -1359,13 +1344,15 @@ const savedView = localStorage.getItem(VIEW_MODE_KEY) || "default";
 appState.viewMode = ["default", "colorSequence", "numberSequence"].includes(savedView) ? savedView : "default";
 if (els.viewModeSelect) els.viewModeSelect.value = appState.viewMode;
 
-function presetSequenceRangeFromLatest() {
-  const latest = appState.data[appState.data.length - 1];
-  if (!latest || !els.sequenceStartDate || !els.sequenceEndDate || !els.sequenceStartHour || !els.sequenceEndHour) return;
-  els.sequenceStartDate.value = latest.fecha;
-  els.sequenceEndDate.value = latest.fecha;
+function presetSequenceRangeForToday() {
+  if (!els.sequenceStartDate || !els.sequenceEndDate || !els.sequenceStartHour || !els.sequenceEndHour) return;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  els.sequenceStartDate.value = today;
+  els.sequenceEndDate.value = today;
   els.sequenceStartHour.value = "12PM";
-  els.sequenceEndHour.value = latest.hora;
+  els.sequenceEndHour.value = "9PM";
+  applySequenceRange();
 }
 refreshData();
 setGridSortButtonLabel();
