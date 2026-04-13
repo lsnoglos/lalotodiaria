@@ -73,6 +73,14 @@
             &rarr;
           </button>
           <span id="timelineLabel" class="timeline-label">--</span>
+          <label for="hourFilterSelect" class="timeline-filter-label">Filtro hora</label>
+          <select id="hourFilterSelect" class="timeline-filter-select">
+            <option value="ALL">Todo</option>
+            <option value="12PM">12</option>
+            <option value="3PM">3</option>
+            <option value="6PM">6</option>
+            <option value="9PM">9</option>
+          </select>
         </div>
         <div class="sequence-controls">
           <h3 class="sequence-title">Trazo secuencial</h3>
@@ -99,8 +107,6 @@
             </div>
           </div>
           <div class="sequence-actions">
-            <button id="sequenceBackDayBtn" class="btn secondary" type="button">← Inicio -1 día</button>
-            <button id="sequenceForwardDayBtn" class="btn secondary" type="button">Inicio +1 día →</button>
             <button id="sequenceBackRangeBtn" class="btn secondary" type="button">← Retroceder rango</button>
             <button id="sequenceForwardRangeBtn" class="btn secondary" type="button">Adelantar rango →</button>
             <button id="drawSequenceBtn" class="btn secondary" type="button">Trazar línea</button>

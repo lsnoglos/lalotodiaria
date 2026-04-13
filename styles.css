@@ -125,6 +125,20 @@ h1, h2, p { margin: 0.2rem 0; }
   color: #c7d2fe;
 }
 
+.timeline-filter-label {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.timeline-filter-select {
+  border-radius: 0.45rem;
+  border: 1px solid #3b4f7a;
+  background: #0b1220;
+  color: var(--text);
+  padding: 0.35rem 0.45rem;
+}
+
 .grid-controls label {
   font-size: 0.9rem;
   color: var(--muted);
