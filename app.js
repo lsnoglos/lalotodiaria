@@ -40,6 +40,7 @@ const els = {
   status: document.getElementById("status"),
   refreshBtn: document.getElementById("refreshBtn"),
   generatePlayBtn: document.getElementById("generatePlayBtn"),
+  copyPromptBtn: document.getElementById("copyPromptBtn"),
   numberGrid: document.getElementById("numberGrid"),
   prevDrawBtn: document.getElementById("prevDrawBtn"),
   nextDrawBtn: document.getElementById("nextDrawBtn"),
@@ -121,6 +122,82 @@ function renderByTimeline() {
   renderTimelineControls();
 }
 
+
+function getPreviousMonthKey(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const date = new Date(year, (month || 1) - 1, 1);
+  date.setMonth(date.getMonth() - 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function buildPromptMonthTransitionText(now = new Date()) {
+  const day = now.getDate();
+  if (day <= 2) return "te comparto los juegos del mes pasado y unos cuantos de este mes";
+  if (day < 5) return "además te comparto los del mes pasado";
+  return "te comparto los juegos de este mes y los del mes pasado";
+}
+
+function groupDrawsByDate(draws) {
+  const grouped = new Map();
+  draws.forEach((draw) => {
+    if (!grouped.has(draw.fecha)) grouped.set(draw.fecha, {});
+    grouped.get(draw.fecha)[draw.hora] = draw.numero;
+  });
+  return [...grouped.entries()].map(([fecha, byHour]) => ({
+    fecha,
+    byHour,
+  }));
+}
+
+function buildMonthGamesText(draws, emptyText = "Sin datos") {
+  const grouped = groupDrawsByDate(draws);
+  if (!grouped.length) return emptyText;
+  return grouped
+    .map(({ fecha, byHour }, index) => `${index + 1}. ${fecha} · 12 pm: ${byHour["12PM"] || "x"}, 3pm: ${byHour["3PM"] || "x"}, 6pm: ${byHour["6PM"] || "x"}, 9pm: ${byHour["9PM"] || "x"}.`)
+    .join("\n");
+}
+
+async function copyPromptToClipboard() {
+  const currentMonthKey = appState.activeMonth || getCurrentMonthKey();
+  const previousMonthKey = getPreviousMonthKey(currentMonthKey);
+  const monthNameCurrent = monthNameEs(currentMonthKey);
+  const monthTransitionText = buildPromptMonthTransitionText(new Date());
+
+  let previousMonthData = [];
+  try {
+    const previousHtml = await fetchHistoryHtml(previousMonthKey, false);
+    previousMonthData = parseLotteryHtml(previousHtml, previousMonthKey);
+  } catch (error) {
+    console.warn("No se pudo cargar el mes anterior para el prompt:", error);
+  }
+
+  const currentMonthData = appState.data || [];
+  const previousGames = buildMonthGamesText(previousMonthData, "1....");
+  const currentGames = buildMonthGamesText(currentMonthData, "1....");
+
+  const prompt = `Eres un jugador profesional de juegos al azar, te apasiona buscar algoritmos matemáticos, crees que el azar es un conjunto desordenado de secuencias ordenadas, porque la naturaleza te lo enseñó así,  siempre hay formas que parecen un caos, pero que terminan formando algo hermoso que se repite en el tiempo. Te compartiré los juegos que van de ${monthNameCurrent}, ${monthTransitionText}.
+
+Diario hay 4 juegos, a las 12 del medio dia, a las 3 pm, 6 y 9 pm. Esos juegos deben seguir algún patrón, quizás el primero que cae si es menor que el segundo, resta x al segundo, y el segundo suma o resta al tercero, al final estos numeros crean una secuencia, y el cuarto se basa en esa respuesta, busca patrones.
+
+Además, en columnas de 10, los números del 01 al 00; los 100 números forman muchísimos infinitos, es decir, al ver el trazo, tiene esa forma muchas veces, una especie de símbolo infinito al formar los 4 juegos. Busca patrones.
+
+La idea es encontrar el siguiente juego, con gran precisión, con margen pero mínimo.
+
+Al final dame una secuencia de números para el próximo juego.
+
+Acá te dejo los juegos:
+
+Mes pasado:
+
+${previousGames}
+
+Mes actual:
+
+${currentGames}`;
+
+  await navigator.clipboard.writeText(prompt);
+  els.status.textContent = "Prompt copiado al portapapeles.";
+}
 function getCurrentMonthKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -1298,6 +1375,14 @@ els.refreshBtn.addEventListener("click", () => refreshData(true));
 els.generatePlayBtn.addEventListener("click", () => {
   if (!appState.analysis) return;
   generatePlay(appState.analysis);
+});
+els.copyPromptBtn?.addEventListener("click", async () => {
+  try {
+    await copyPromptToClipboard();
+  } catch (error) {
+    console.error(error);
+    els.status.textContent = `No se pudo copiar el prompt: ${error.message}`;
+  }
 });
 els.gridColumnsSelect.addEventListener("change", (event) => {
   const selectedColumns = Number(event.target.value);
