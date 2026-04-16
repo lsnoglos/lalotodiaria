@@ -82,26 +82,6 @@ h1, h2, p { margin: 0.2rem 0; }
   margin-top: 0.7rem;
 }
 
-.lottery-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.45rem;
-}
-
-.lottery-switch label {
-  font-size: 0.88rem;
-  color: var(--muted);
-}
-
-.lottery-switch select {
-  border-radius: 0.45rem;
-  border: 1px solid #3b4f7a;
-  background: #0b1220;
-  color: var(--text);
-  padding: 0.35rem 0.5rem;
-}
-
 .btn {
   border: none;
   border-radius: 0.6rem;
