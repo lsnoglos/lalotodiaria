@@ -4,12 +4,12 @@ const SOURCE_PROXY_URLS = [
   (url) => `https://proxy.cors.sh/${url}`,
   (url) => `https://cors.isomorphic-git.org/${url}`,
 ];
-const CACHE_KEY = "lotoData";
-const CACHE_TIME_KEY = "lotoDataUpdatedAt";
-const PREDICTION_PENDING_KEY = "lotoPredictionPending";
-const PREDICTION_RESULTS_KEY = "lotoPredictionResults";
-const PERSONAL_GAME_KEY = "lotoPersonalGameNumbers";
-const VIEW_MODE_KEY = "lotoViewMode";
+const CACHE_KEY = "juega3Data";
+const CACHE_TIME_KEY = "juega3DataUpdatedAt";
+const PREDICTION_PENDING_KEY = "juega3PredictionPending";
+const PREDICTION_RESULTS_KEY = "juega3PredictionResults";
+const PERSONAL_GAME_KEY = "juega3PersonalGameNumbers";
+const VIEW_MODE_KEY = "juega3ViewMode";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const HOURS = ["12PM", "3PM", "6PM", "9PM"];
 const HOUR_LABELS = { "12PM": "12:00pm", "3PM": "3:00pm", "6PM": "6:00pm", "9PM": "9:00pm" };
@@ -26,9 +26,9 @@ let appState = {
   activeMonth: "",
   visibleDrawIndex: -1,
   currentTopFive: [],
-  gridColumns: 10,
+  gridColumns: 20,
   gridSortDirection: "asc",
-  gridStartWith: "01",
+  gridStartWith: "001",
   viewMode: "default",
   hourFilter: "ALL",
   personalGameNumbers: [],
@@ -118,7 +118,7 @@ function renderByTimeline() {
   appState.analysis = analysis;
   renderAll(visibleData, analysis);
   const current = visibleData[visibleData.length - 1];
-  els.lastDrawHighlight.textContent = `Sorteo en vista: ${current.fecha} · ${HOUR_LABELS[current.hora] || current.hora} · ${current.numero}`;
+  els.lastDrawHighlight.textContent = `Sorteo en vista: ${current.fecha} · ${HOUR_LABELS[current.hora] || current.hora} · ${current.numero} · juego ${current.sorteo || "--"}`;
   renderTimelineControls();
 }
 
@@ -179,7 +179,7 @@ async function copyPromptToClipboard() {
 
 Diario hay 4 juegos, a las 12 del medio dia, a las 3 pm, 6 y 9 pm. Esos juegos deben seguir algún patrón, quizás el primero que cae si es menor que el segundo, resta x al segundo, y el segundo suma o resta al tercero, al final estos numeros crean una secuencia, y el cuarto se basa en esa respuesta, busca patrones.
 
-Además, en columnas de 10, los números del 01 al 00; los 100 números forman muchísimos infinitos, es decir, al ver el trazo, tiene esa forma muchas veces, una especie de símbolo infinito al formar los 4 juegos. Busca patrones.
+Además, en columnas de 20, los números del 001 al 000; los 1000 números forman muchísimas trayectorias, es decir, al ver el trazo aparecen patrones que parecen infinitos al formar los 4 juegos. Busca patrones.
 
 La idea es encontrar el siguiente juego, con gran precisión, con margen pero mínimo.
 
@@ -239,7 +239,7 @@ function getStoredArray(key) {
 
 function loadPersonalGameNumbers() {
   return getStoredArray(PERSONAL_GAME_KEY)
-    .filter((n) => /^\d{2}$/.test(n))
+    .filter((n) => /^\d{3}$/.test(n))
     .sort();
 }
 
@@ -300,7 +300,7 @@ function getPassedGameSlots(fromDate, toDate) {
 async function fetchHistoryHtml(monthKey, force = false) {
   const body = new URLSearchParams({
     _method: "POST",
-    "data[Lottery][name]": "Loto Diaria",
+    "data[Lottery][name]": "Juega 3",
     "data[Lottery][date]": monthKey,
   });
 
@@ -384,6 +384,9 @@ function parseLotteryHtml(html, monthKey) {
     const fecha = parseSpanishDate(tds[0].textContent || "");
     if (!fecha || !fecha.startsWith(monthKey)) return;
 
+    const gameName = (tds[1].querySelector("a")?.textContent || "").trim().toLowerCase();
+    if (!gameName.includes("juga 3")) return;
+
     const hora = normalizeHour(tds[1].querySelector("sup")?.textContent || "");
     if (!hora) return;
 
@@ -391,11 +394,12 @@ function parseLotteryHtml(html, monthKey) {
       .map((node) => (node.textContent || "").trim())
       .filter((v) => /^\d$/.test(v));
 
-    if (digits.length >= 2) {
+    if (digits.length >= 3) {
       rows.push({
         fecha,
         hora,
-        numero: `${digits[0]}${digits[1]}`,
+        numero: `${digits[0]}${digits[1]}${digits[2]}`,
+        sorteo: (tds[3]?.textContent || "").trim(),
       });
     }
   });
@@ -406,19 +410,23 @@ function parseLotteryHtml(html, monthKey) {
   });
 }
 
-/** Crea lista ["00", ... "99"]. */
+/** Crea lista ["000", ... "999"]. */
 function getAllNumbers() {
-  return Array.from({ length: 100 }, (_, i) => String(i).padStart(2, "0"));
+  return Array.from({ length: 1000 }, (_, i) => String(i).padStart(3, "0"));
 }
 
 function analyzeData(data) {
   const allNumbers = getAllNumbers();
   const frequency = Object.fromEntries(allNumbers.map((n) => [n, 0]));
   const lastSeen = Object.fromEntries(allNumbers.map((n) => [n, -1]));
+  const recencyWeight = Object.fromEntries(allNumbers.map((n) => [n, 0]));
+  const totalDraws = data.length;
 
   data.forEach((draw, idx) => {
     frequency[draw.numero] += 1;
     lastSeen[draw.numero] = idx;
+    const distanceFromLatest = Math.max(0, totalDraws - 1 - idx);
+    recencyWeight[draw.numero] += Math.exp(-distanceFromLatest / 8);
   });
 
   const used = data.map((d) => d.numero);
@@ -428,23 +436,24 @@ function analyzeData(data) {
   const muyRepetidos = allNumbers.filter((n) => frequency[n] > 2);
 
   const invertidos = allNumbers.filter((n) => {
-    const inv = n[1] + n[0];
+    const inv = n.split("").reverse().join("");
     return inv !== n && frequency[n] > 0 && frequency[inv] > 0;
   });
 
-  const totalDraws = data.length;
   const distances = Object.fromEntries(
     allNumbers.map((n) => [n, lastSeen[n] === -1 ? totalDraws : totalDraws - 1 - lastSeen[n]])
   );
 
   const maxFreq = Math.max(...Object.values(frequency), 1);
+  const maxRecencyWeight = Math.max(...Object.values(recencyWeight), 1);
   const scores = Object.fromEntries(
     allNumbers.map((n) => {
       const noSalido = noSalidos.includes(n) ? 1 : 0;
       const distancia = distances[n];
       const bajaFrecuencia = maxFreq - frequency[n];
-      const invertidoDetectado = frequency[n[1] + n[0]] > 0 ? 1 : 0;
-      const score = noSalido * 3 + distancia * 2 + bajaFrecuencia * 2 + invertidoDetectado;
+      const invertidoDetectado = frequency[n.split("").reverse().join("")] > 0 ? 1 : 0;
+      const recentPenalty = recencyWeight[n] / maxRecencyWeight;
+      const score = noSalido * 3 + distancia * 2 + bajaFrecuencia * 2 + invertidoDetectado - recentPenalty;
       return [n, score];
     })
   );
@@ -459,15 +468,18 @@ function analyzeData(data) {
 
 function cellClass(number, analysis) {
   const freq = analysis.frequency[number];
-  const isDouble = number[0] === number[1];
+  const uniqueDigits = new Set(number.split("")).size;
+  const isTriple = uniqueDigits === 1;
+  const isDouble = uniqueDigits === 2;
   const isEven = Number(number) % 2 === 0;
 
   if (analysis.noSalidos.includes(number)) {
-    if (isDouble) return isEven ? "no-salido-doble-par" : "no-salido-doble-impar";
+    if (isTriple) return isEven ? "no-salido-doble-par" : "no-salido-doble-impar";
+    if (isDouble) return isEven ? "no-salido-par" : "no-salido-impar";
     return isEven ? "no-salido-par" : "no-salido-impar";
   }
   if (freq > 1) return "repetido";
-  if (isDouble) return "salio-doble";
+  if (isTriple) return "salio-doble";
   if (analysis.invertidos.includes(number)) return "invertido";
   return "salio";
 }
@@ -477,12 +489,12 @@ function formatDrawEntry(draw) {
   const [year, month, day] = draw.fecha.split("-");
   const shortYear = year.slice(-2);
   const label = HOUR_LABELS[draw.hora] || draw.hora;
-  return `Jugó el ${day} - ${month} - ${shortYear} a las ${label}`;
+  return `Jugó el ${day} - ${month} - ${shortYear} a las ${label} (sorteo ${draw.sorteo || "--"})`;
 }
 
 function buildNumberDetail(number, analysis, sourceData = getVisibleData()) {
   const drawList = sourceData.filter((d) => d.numero === number);
-  const inverse = `${number[1]}${number[0]}`;
+  const inverse = number.split("").reverse().join("");
   const inverseSeen = analysis.frequency[inverse] > 0;
 
   return [
@@ -608,7 +620,7 @@ function renderGrid(analysis) {
   const numberSequenceMap = appState.viewMode === "numberSequence" ? buildNumberSequenceMap(filteredGridData) : null;
 
   const numbersByStart =
-    appState.gridStartWith === "01"
+    appState.gridStartWith === "001"
       ? [...gridAnalysis.allNumbers.slice(1), gridAnalysis.allNumbers[0]]
       : gridAnalysis.allNumbers.slice();
   const orderedNumbers = appState.gridSortDirection === "desc" ? numbersByStart.slice().reverse() : numbersByStart;
@@ -723,7 +735,7 @@ function renderAccordion(data) {
     filtered.forEach((draw) => {
       const pill = document.createElement("span");
       pill.className = "pill";
-      pill.textContent = `${draw.fecha} → ${draw.numero}`;
+      pill.textContent = `${draw.fecha} → ${draw.numero} · sorteo ${draw.sorteo || "--"}`;
       content.appendChild(pill);
     });
 
@@ -737,7 +749,7 @@ function renderHistory(data) {
   els.historyBody.innerHTML = "";
   data.slice().reverse().slice(0, 200).forEach((draw) => {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${draw.fecha}</td><td>${draw.hora}</td><td><strong>${draw.numero}</strong></td>`;
+    tr.innerHTML = `<td>${draw.fecha}</td><td>${draw.hora}</td><td><strong>${draw.numero}</strong></td><td>${draw.sorteo || "--"}</td>`;
     els.historyBody.appendChild(tr);
   });
 }
@@ -795,14 +807,14 @@ function renderMonthTrendChart(data) {
   const bottomPad = 24;
   const plotWidth = Math.max(1, width - leftPad - rightPad);
   const plotHeight = Math.max(1, height - topPad - bottomPad);
-  const toY = (value) => topPad + ((99 - value) / 99) * plotHeight;
+  const toY = (value) => topPad + ((999 - value) / 999) * plotHeight;
 
   ctx.fillStyle = "#0b1220";
   ctx.fillRect(leftPad, topPad, plotWidth, plotHeight);
 
   ctx.strokeStyle = "rgba(148, 163, 184, 0.25)";
   ctx.lineWidth = 1;
-  [0, 20, 40, 60, 80, 99].forEach((tick) => {
+  [0, 200, 400, 600, 800, 999].forEach((tick) => {
     const y = toY(tick);
     ctx.beginPath();
     ctx.moveTo(leftPad, y);
@@ -814,7 +826,7 @@ function renderMonthTrendChart(data) {
   ctx.font = "11px Inter, system-ui, sans-serif";
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
-  [99, 80, 60, 40, 20, 0].forEach((tick) => {
+  [999, 800, 600, 400, 200, 0].forEach((tick) => {
     ctx.fillText(String(tick), leftPad - 6, toY(tick));
   });
 
@@ -831,7 +843,7 @@ function renderMonthTrendChart(data) {
   ctx.lineWidth = 2;
   ctx.beginPath();
   draws.forEach((draw, index) => {
-    const value = Math.min(99, Math.max(0, Number(draw.numero)));
+    const value = Math.min(999, Math.max(0, Number(draw.numero)));
     const x = leftPad + xStep * index;
     const y = toY(value);
     if (index === 0) ctx.moveTo(x, y);
@@ -839,7 +851,7 @@ function renderMonthTrendChart(data) {
   });
   ctx.stroke();
 
-  const lastValue = Math.min(99, Math.max(0, Number(draws[draws.length - 1].numero)));
+  const lastValue = Math.min(999, Math.max(0, Number(draws[draws.length - 1].numero)));
   const lastX = leftPad + xStep * (draws.length - 1);
   const lastY = toY(lastValue);
   ctx.fillStyle = "#f97316";
@@ -1312,7 +1324,7 @@ function showNoMonthlyData(monthKey) {
   els.topRecommendations.innerHTML = "";
   els.algorithmPanels.innerHTML = "";
   els.hourAccordion.innerHTML = "";
-  els.historyBody.innerHTML = `<tr><td colspan=\"3\">Aún no hay sorteos para ${monthCap}. Puedes consultar el mes anterior para estimar el primer número de ${monthCap}.</td></tr>`;
+  els.historyBody.innerHTML = `<tr><td colspan=\"4\">Aún no hay sorteos para ${monthCap}. Puedes consultar el mes anterior para estimar el primer número de ${monthCap}.</td></tr>`;
   els.generatedPlay.textContent = "Sin jugada sugerida por falta de sorteos en el mes actual.";
   els.lastDrawHighlight.textContent = "Último sorteo: --";
   appState.visibleDrawIndex = -1;
@@ -1363,7 +1375,7 @@ async function refreshData(force = false) {
 
     const last = data[data.length - 1];
     const updatedAt = new Date().toLocaleString();
-    els.lastDrawHighlight.textContent = `Último sorteo: ${last.fecha} · ${HOUR_LABELS[last.hora] || last.hora} · ${last.numero}`;
+    els.lastDrawHighlight.textContent = `Último sorteo: ${last.fecha} · ${HOUR_LABELS[last.hora] || last.hora} · ${last.numero} · juego ${last.sorteo || "--"}`;
     els.status.textContent = `OK · ${data.length} sorteos cargados (${monthKey}) · ${updatedAt}`;
   } catch (error) {
     console.error(error);
@@ -1391,7 +1403,7 @@ els.gridColumnsSelect.addEventListener("change", (event) => {
   if (appState.analysis) renderGrid(appState.analysis);
 });
 els.gridStartSelect.addEventListener("change", (event) => {
-  const startWith = event.target.value === "01" ? "01" : "00";
+  const startWith = event.target.value === "001" ? "001" : "000";
   appState.gridStartWith = startWith;
   if (appState.analysis) renderGrid(appState.analysis);
 });
