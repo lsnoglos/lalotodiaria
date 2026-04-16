@@ -6,8 +6,6 @@ const SOURCE_PROXY_URLS = [
 ];
 const CACHE_KEY = "lotoData";
 const CACHE_TIME_KEY = "lotoDataUpdatedAt";
-const PREDICTION_PENDING_KEY = "lotoPredictionPending";
-const PREDICTION_RESULTS_KEY = "lotoPredictionResults";
 const PERSONAL_GAME_KEY = "lotoPersonalGameNumbers";
 const VIEW_MODE_KEY = "lotoViewMode";
 const SELECTED_GAME_KEY = "lotoSelectedGame";
@@ -73,6 +71,7 @@ const els = {
   hourFilterSelect: document.getElementById("hourFilterSelect"),
   topRecommendations: document.getElementById("topRecommendations"),
   realtimeRecommendations: document.getElementById("realtimeRecommendations"),
+  verifySequenceBtn: document.getElementById("verifySequenceBtn"),
   generatedPlay: document.getElementById("generatedPlay"),
   lastDrawHighlight: document.getElementById("lastDrawHighlight"),
   gridColumnsSelect: document.getElementById("gridColumnsSelect"),
@@ -80,13 +79,13 @@ const els = {
   viewModeSelect: document.getElementById("viewModeSelect"),
   gridSortBtn: document.getElementById("gridSortBtn"),
   monthTrendChart: document.getElementById("monthTrendChart"),
+  monthChartTitle: document.getElementById("monthChartTitle"),
+  monthChartHint: document.getElementById("monthChartHint"),
   algorithmPanels: document.getElementById("algorithmPanels"),
   hourAccordion: document.getElementById("hourAccordion"),
   hourPanelTitle: document.getElementById("hourPanelTitle"),
   historyBody: document.getElementById("historyBody"),
   historyTitle: document.getElementById("historyTitle"),
-  predictionStatsBody: document.getElementById("predictionStatsBody"),
-  predictionStatsSummary: document.getElementById("predictionStatsSummary"),
   accordionTemplate: document.getElementById("accordionTemplate"),
   personalGameSummary: document.getElementById("personalGameSummary"),
   personalGameNumbers: document.getElementById("personalGameNumbers"),
@@ -168,6 +167,14 @@ function updateGameUiLabels() {
   document.title = `${title} Nicaragua · Analizador Inteligente`;
   const appTitle = document.querySelector(".app-title");
   if (appTitle) appTitle.textContent = title;
+  if (els.monthChartTitle) {
+    const range = appState.gameConfig.key === "diaria" ? "00-99" : "000-999";
+    els.monthChartTitle.textContent = `Gráfica de comportamiento del mes (${range})`;
+  }
+  if (els.monthChartHint) {
+    const scale = appState.gameConfig.key === "diaria" ? "00-99" : "000-999";
+    els.monthChartHint.textContent = `Eje izquierdo: escala ${scale}. Eje inferior: día del mes y número entre paréntesis.`;
+  }
 }
 
 function updateGridStartOptions() {
@@ -296,22 +303,55 @@ function savePersonalGameNumbers() {
   localStorage.setItem(getScopedStorageKey(PERSONAL_GAME_KEY), JSON.stringify(appState.personalGameNumbers));
 }
 
-function getPendingPrediction() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(getScopedStorageKey(PREDICTION_PENDING_KEY)) || "null");
-    if (!parsed || !Array.isArray(parsed.numbers)) return null;
-    return parsed;
-  } catch {
-    return null;
+function parseNumberValue(numberLike) {
+  const parsed = Number(numberLike);
+  if (!Number.isInteger(parsed)) return 0;
+  return Math.max(appState.gameConfig.min, Math.min(appState.gameConfig.max, parsed));
+}
+
+function generarCandidatosOrdenados(n) {
+  const base = appState.gameConfig.max + 1;
+  const a = Math.floor(n / 10);
+  const b = n % 10;
+  const s = a + b;
+  const d = Math.abs(a - b);
+
+  return [
+    (10 * b + a) % base,
+    (10 * s + d) % base,
+    (10 * d + s) % base,
+    (10 * a + s) % base,
+    (10 * b + s) % base,
+    (10 * s + a) % base,
+    (10 * s + b) % base,
+  ];
+}
+
+function siguiente(n, visitados) {
+  const candidatos = generarCandidatosOrdenados(n);
+  for (const c of candidatos) {
+    if ((visitados[c] || 0) === 0) return c;
   }
+  for (const c of candidatos) {
+    if ((visitados[c] || 0) < 2) return c;
+  }
+  return candidatos[0];
 }
 
-function savePendingPrediction(prediction) {
-  localStorage.setItem(getScopedStorageKey(PREDICTION_PENDING_KEY), JSON.stringify(prediction));
-}
+function generarSecuencia(inicio, pasos, visitadosIniciales = null) {
+  const visitados =
+    visitadosIniciales ||
+    Object.fromEntries(Array.from({ length: appState.gameConfig.max + 1 }, (_, i) => [i, 0]));
+  const secuencia = [];
+  let actual = inicio;
 
-function clearPendingPrediction() {
-  localStorage.removeItem(getScopedStorageKey(PREDICTION_PENDING_KEY));
+  for (let i = 0; i < pasos; i += 1) {
+    secuencia.push(actual);
+    visitados[actual] = (visitados[actual] || 0) + 1;
+    actual = siguiente(actual, visitados);
+  }
+
+  return secuencia;
 }
 
 function drawHourSortValue(hour) {
@@ -616,23 +656,6 @@ function getNextDrawInfo(referenceDate = new Date()) {
   };
 }
 
-function buildSlotDate(baseDate, hourKey) {
-  const schedule = GAME_SCHEDULE[hourKey];
-  if (!schedule || !(baseDate instanceof Date) || Number.isNaN(baseDate.getTime())) return null;
-  return new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), schedule.hour, schedule.minute, 0, 0);
-}
-
-function isPendingPredictionCurrent(pending, referenceDate = new Date()) {
-  if (!pending || !pending.targetHour || !pending.predictedAt) return false;
-  const predictedAt = new Date(pending.predictedAt);
-  if (Number.isNaN(predictedAt.getTime())) return false;
-
-  let targetAt = buildSlotDate(predictedAt, pending.targetHour);
-  if (!targetAt) return false;
-  if (targetAt <= predictedAt) targetAt = new Date(targetAt.getTime() + 24 * 60 * 60 * 1000);
-  return targetAt > referenceDate;
-}
-
 function renderPersonalGameSection() {
   if (!els.personalGameNumbers || !els.personalGameSummary) return;
   const numbers = appState.personalGameNumbers.slice().sort();
@@ -800,34 +823,32 @@ function renderHistory(data) {
   });
 }
 
-function renderTop(analysis) {
-  const top = getAdaptiveTopFive(analysis);
-  appState.currentTopFive = top.map((x) => x.n);
-  const pending = getPendingPrediction();
-  const sameNumbers =
-    pending &&
-    Array.isArray(pending.numbers) &&
-    pending.numbers.length === appState.currentTopFive.length &&
-    pending.numbers.every((value, idx) => value === appState.currentTopFive[idx]);
-  const shouldRefreshPending = !sameNumbers || !isPendingPredictionCurrent(pending, new Date());
-  if (shouldRefreshPending && isTimelineAtLatest()) {
-    const nextDraw = getNextDrawInfo(new Date());
-    const predictionId = `${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
-    savePendingPrediction({
-      predictionId,
-      predictedAt: new Date().toISOString(),
-      targetHour: nextDraw.hourKey,
-      numbers: appState.currentTopFive.slice(0, 5),
-      remainingDraws: 4,
-      evaluatedDrawIds: [],
-    });
+function renderTop() {
+  const visibleData = getVisibleData();
+  const lastDraw = visibleData[visibleData.length - 1];
+  if (!lastDraw) {
+    els.topRecommendations.innerHTML = "<li>Sin datos para generar secuencia.</li>";
+    els.realtimeRecommendations.innerHTML = "<li>Sin datos para generar secuencia.</li>";
+    appState.currentTopFive = [];
+    return;
   }
-  els.topRecommendations.innerHTML = "";
-  top.forEach((item) => {
-    const li = document.createElement("li");
-    li.textContent = `${item.n} | ${item.freq === 0 ? "No ha salido" : `${item.freq} vez${item.freq === 1 ? "" : "es"}`} | ${item.distance} sorteos sin jugar`;
-    els.topRecommendations.appendChild(li);
+
+  const visitadosBase = Object.fromEntries(Array.from({ length: appState.gameConfig.max + 1 }, (_, i) => [i, 0]));
+  visibleData.forEach((draw) => {
+    const n = parseNumberValue(draw.numero);
+    visitadosBase[n] = (visitadosBase[n] || 0) + 1;
   });
+  const inicio = parseNumberValue(lastDraw.numero);
+  const secuenciaSugerida = generarSecuencia(inicio, 5, { ...visitadosBase }).map((n) =>
+    String(n).padStart(appState.gameConfig.digits, "0")
+  );
+  const secuenciaProbable = generarSecuencia(inicio, 10, { ...visitadosBase })
+    .slice(1, 6)
+    .map((n) => String(n).padStart(appState.gameConfig.digits, "0"));
+
+  appState.currentTopFive = secuenciaSugerida.slice();
+  els.topRecommendations.innerHTML = secuenciaSugerida.map((n, idx) => `<li>${idx + 1}. ${n}</li>`).join("");
+  els.realtimeRecommendations.innerHTML = secuenciaProbable.map((n, idx) => `<li>${idx + 1}. ${n}</li>`).join("");
 }
 
 function renderMonthTrendChart(data) {
@@ -847,13 +868,13 @@ function renderMonthTrendChart(data) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
 
-  const leftPad = 40;
+  const chartMax = appState.gameConfig.max;
+  const leftPad = chartMax === 999 ? 48 : 40;
   const rightPad = 12;
   const topPad = 12;
   const bottomPad = 24;
   const plotWidth = Math.max(1, width - leftPad - rightPad);
   const plotHeight = Math.max(1, height - topPad - bottomPad);
-  const chartMax = appState.gameConfig.max;
   const toY = (value) => topPad + ((chartMax - value) / chartMax) * plotHeight;
 
   ctx.fillStyle = "#0b1220";
@@ -1097,22 +1118,8 @@ function buildRealtimeSuggestions(data, analysis, limit = 2) {
 }
 
 function renderRealtimeTop(data, analysis) {
-  if (!els.realtimeRecommendations) return;
-
-  const realtime = buildRealtimeSuggestions(data, analysis, 2);
-  els.realtimeRecommendations.innerHTML = "";
-
-  if (!realtime.length) {
-    els.realtimeRecommendations.innerHTML = "<li>Se necesitan al menos 2 sorteos para activar tiempo real.</li>";
-    return;
-  }
-
-  realtime.forEach((item) => {
-    const li = document.createElement("li");
-    const transitionLabel = (item.transitionProb * 100).toFixed(1);
-    li.textContent = `${item.n} | transición ${transitionLabel}% | atraso ${item.distance} sorteos`;
-    els.realtimeRecommendations.appendChild(li);
-  });
+  void data;
+  void analysis;
 }
 
 function drawPyramid(numbers) {
@@ -1127,32 +1134,14 @@ function drawPyramid(numbers) {
     .join("\n");
 }
 
-function drawCross(numbers) {
-  const n = numbers.slice(0, 9);
-  return [
-    `   ${n[0]}   `,
-    ` ${n[1]} ${n[2]} `,
-    `${n[3]} ${n[4]} ${n[5]}`,
-    ` ${n[6]} ${n[7]} `,
-    `   ${n[8]}   `,
-  ].join("\n");
-}
-
 function renderAlgorithmPanels(analysis) {
   const top10 = analysis.expansionModel.slice(0, 10).map((x) => x.n);
-  const kolmogorovSignal = analysis.expansionModel
-    .slice(0, 5)
-    .map((x) => `${x.n}:${Math.max(0.1, 1 - x.freq / Math.max(1, analysis.dataPoints)).toFixed(2)}`)
-    .join(" · ");
-
-  const gambler = analysis.noSalidos.slice(0, 5).join(", ") || "Ninguno";
   const pareto = analysis.expansionModel
     .filter((x) => x.distance > 6 || x.freq === 0)
     .slice(0, 5)
     .map((x) => x.n)
     .join(", ");
 
-  const predictionDriven = buildPredictionDrivenTop(analysis);
   const cards = [
     {
       title: "Pirámide",
@@ -1160,29 +1149,9 @@ function renderAlgorithmPanels(analysis) {
       shape: drawPyramid(top10),
     },
     {
-      title: "Cruce",
-      note: "Cruza tendencia reciente y números fríos.",
-      shape: drawCross(top10),
-    },
-    {
-      title: "Andrey Kolmogorov (complejidad)",
-      note: "Señal estimada por irregularidad histórica (más alto = menos patrón repetido).",
-      shape: kolmogorovSignal,
-    },
-    {
-      title: "Falacia del apostador",
-      note: "Estos parecen 'deber salir', pero recuerda: cada sorteo sigue siendo independiente.",
-      shape: gambler,
-    },
-    {
       title: "Teoría de juego (Pareto)",
       note: "Grupo eficiente: balance entre números atrasados y baja repetición.",
       shape: pareto || "Sin conjunto eficiente claro",
-    },
-    {
-      title: "Según predicciones",
-      note: "Ajusta por rendimiento histórico de aciertos/desaciertos guardados.",
-      shape: predictionDriven.length ? predictionDriven.join(", ") : "Aún no hay datos suficientes.",
     },
   ];
 
@@ -1195,165 +1164,16 @@ function renderAlgorithmPanels(analysis) {
   });
 }
 
-function resolvePredictionResults(data) {
-  const pending = getPendingPrediction();
-  if (!pending) return;
-
-  const predictionTime = new Date(pending.predictedAt);
-  if (Number.isNaN(predictionTime.getTime())) {
-    clearPendingPrediction();
-    return;
-  }
-
-  const evaluated = new Set(Array.isArray(pending.evaluatedDrawIds) ? pending.evaluatedDrawIds : []);
-  const remainingDraws = Number.isInteger(pending.remainingDraws) ? pending.remainingDraws : 1;
-  const upcomingDraws = data.filter((draw) => {
-    if (drawToDate(draw) <= predictionTime) return false;
-    const drawId = `${draw.fecha}_${draw.hora}`;
-    return !evaluated.has(drawId);
-  });
-  if (!upcomingDraws.length) return;
-
-  const results = getStoredArray(getScopedStorageKey(PREDICTION_RESULTS_KEY));
-  let remaining = remainingDraws;
-  const nextEvaluated = new Set(evaluated);
-  let hasHit = false;
-
-  for (const draw of upcomingDraws) {
-    if (remaining <= 0 || hasHit) break;
-    const drawId = `${draw.fecha}_${draw.hora}`;
-    const predictionId = pending.predictionId || pending.predictedAt;
-    const resultId = `${predictionId}_${drawId}`;
-    if (results.some((item) => item.resultId === resultId)) {
-      nextEvaluated.add(drawId);
-      continue;
-    }
-
-    const hit = pending.numbers.includes(draw.numero);
-    results.push({
-      resultId,
-      predictionId,
-      drawId,
-      drawNumber: draw.numero,
-      drawDate: draw.fecha,
-      drawHour: draw.hora,
-      predictedAt: pending.predictedAt,
-      predictionHour: pending.targetHour,
-      numbers: pending.numbers.slice(0, 5),
-      hit,
-    });
-    nextEvaluated.add(drawId);
-    remaining -= 1;
-    if (hit) hasHit = true;
-  }
-
-  localStorage.setItem(getScopedStorageKey(PREDICTION_RESULTS_KEY), JSON.stringify(results));
-  if (remaining <= 0 || hasHit) {
-    clearPendingPrediction();
-    return;
-  }
-  savePendingPrediction({ ...pending, remainingDraws: remaining, evaluatedDrawIds: Array.from(nextEvaluated) });
-}
-
-function buildPredictionDrivenTop(analysis) {
-  const results = getStoredArray(getScopedStorageKey(PREDICTION_RESULTS_KEY));
-  if (results.length < 3) return [];
-
-  const perNumber = Object.fromEntries(analysis.allNumbers.map((n) => [n, { hits: 0, misses: 0 }]));
-  results.forEach((item) => {
-    (item.numbers || []).forEach((n) => {
-      if (!perNumber[n]) return;
-      if (item.drawNumber === n) perNumber[n].hits += 1;
-      else perNumber[n].misses += 1;
-    });
-  });
-
-  return analysis.allNumbers
-    .map((n) => {
-      const stats = perNumber[n];
-      const attempts = stats.hits + stats.misses;
-      if (!attempts) return { n, score: -Infinity };
-      const precision = stats.hits / attempts;
-      const baseScore = analysis.scores[n] || 0;
-      const score = precision * 8 + stats.hits * 2 + baseScore * 0.15;
-      return { n, score };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .map((item) => item.n);
-}
-
-function getAdaptiveTopFive(analysis) {
-  const predictionDriven = buildPredictionDrivenTop(analysis);
-  const predictionBoost = Object.fromEntries(predictionDriven.map((n, idx) => [n, 5 - idx]));
-  const recentMissPenalty = {};
-  const results = getStoredArray(getScopedStorageKey(PREDICTION_RESULTS_KEY)).slice(-24);
-  results.forEach((item) => {
-    if (item.hit) return;
-    (item.numbers || []).forEach((n) => {
-      recentMissPenalty[n] = (recentMissPenalty[n] || 0) + 1;
-    });
-  });
-
-  const adaptive = analysis.allNumbers
-    .map((n) => {
-      const baseScore = analysis.scores[n] || 0;
-      const missPenalty = (recentMissPenalty[n] || 0) * 2.6;
-      const boost = (predictionBoost[n] || 0) * 1.8;
-      const score = baseScore + boost - missPenalty;
-      return {
-        n,
-        score,
-        freq: analysis.frequency[n],
-        distance: analysis.distances[n],
-      };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  return adaptive.slice(0, 5);
-}
-
-function renderPredictionStats() {
-  if (!els.predictionStatsBody || !els.predictionStatsSummary) return;
-  const results = getStoredArray(getScopedStorageKey(PREDICTION_RESULTS_KEY));
-  els.predictionStatsBody.innerHTML = "";
-
-  if (!results.length) {
-    els.predictionStatsSummary.textContent = "Aún no hay resultados registrados.";
-    els.predictionStatsBody.innerHTML = `<tr><td colspan="5">Cuando ocurra un nuevo sorteo tras actualizar, aquí verás aciertos y desaciertos.</td></tr>`;
-    return;
-  }
-
-  const total = results.length;
-  const hits = results.filter((item) => item.hit).length;
-  const misses = total - hits;
-  const hitRate = ((hits / total) * 100).toFixed(1);
-  els.predictionStatsSummary.textContent = `Total: ${total} · Aciertos: ${hits} · Desaciertos: ${misses} · Efectividad: ${hitRate}%`;
-
-  results
-    .slice()
-    .reverse()
-    .slice(0, 120)
-    .forEach((item) => {
-      const tr = document.createElement("tr");
-      const predictedAtText = item.predictedAt ? new Date(item.predictedAt).toLocaleString() : "--";
-      const predictionHourText = HOUR_LABELS[item.predictionHour] || item.predictionHour || "--";
-      tr.innerHTML = `<td>${item.drawDate}</td><td>${HOUR_LABELS[item.drawHour] || item.drawHour}</td><td>${item.numbers.join(" | ")}<br><small class="hint">Pronóstico: ${predictionHourText} · ${predictedAtText}</small></td><td><strong>${item.drawNumber}</strong></td><td>${item.hit ? "✅ Acierto" : "❌ Desacierto"}</td>`;
-      els.predictionStatsBody.appendChild(tr);
-    });
-}
-
 function renderAll(data, analysis) {
   renderGrid(analysis);
   renderMonthTrendChart(data);
   renderPersonalGameSection();
-  renderTop(analysis);
+  renderTop();
   renderRealtimeTop(data, analysis);
   generatePlay(analysis);
   renderAlgorithmPanels(analysis);
   renderAccordion(data);
   renderHistory(data);
-  renderPredictionStats();
   renderTimelineControls();
 }
 
@@ -1413,7 +1233,6 @@ async function refreshData(force = false) {
       return;
     }
 
-    resolvePredictionResults(data);
     const analysis = analyzeData(data);
     appState = { ...appState, data, analysis, visibleDrawIndex: data.length - 1 };
     const monthCap = monthNameEs(monthKey).replace(/^./, (s) => s.toUpperCase());
@@ -1447,6 +1266,10 @@ async function switchGame(nextGameKey) {
 }
 
 els.refreshBtn.addEventListener("click", () => refreshData(true));
+els.verifySequenceBtn?.addEventListener("click", async () => {
+  await refreshData(true);
+  els.status.textContent = `Secuencia verificada con los últimos números en tablero (${appState.gameConfig.label}).`;
+});
 els.generatePlayBtn.addEventListener("click", () => {
   if (!appState.analysis) return;
   generatePlay(appState.analysis);

@@ -124,8 +124,8 @@
 
       <section class="card span-2">
         <details>
-          <summary>Gráfica de comportamiento del mes (0-99)</summary>
-          <p class="hint chart-hint">Eje izquierdo: escala 00-99. Eje inferior: día del mes y número entre paréntesis.</p>
+          <summary id="monthChartTitle">Gráfica de comportamiento del mes</summary>
+          <p id="monthChartHint" class="hint chart-hint">Eje izquierdo: escala numérica del juego. Eje inferior: día del mes y número entre paréntesis.</p>
           <div class="month-chart-wrap">
             <canvas id="monthTrendChart" aria-label="Gráfica de tendencia mensual de números" role="img"></canvas>
           </div>
@@ -134,11 +134,13 @@
 
       <section class="card">
         <details>
-          <summary>Top 5 del día</summary>
+          <summary>Secuencia sugerida y probable</summary>
+          <p class="hint realtime-hint">Algoritmo determinista por prioridad fija con memoria de visitados.</p>
+          <h3 class="subsection-title">Secuencia sugerida</h3>
           <ol id="topRecommendations" class="list"></ol>
-          <h3 class="subsection-title">Números sugeridos en tiempo real</h3>
-          <p class="hint realtime-hint">Se recalculan con el último número ganador y transición reciente.</p>
+          <h3 class="subsection-title">Secuencia probable</h3>
           <ol id="realtimeRecommendations" class="list realtime-list"></ol>
+          <button id="verifySequenceBtn" class="btn secondary" type="button">Verificar nuevos números</button>
         </details>
       </section>
 
@@ -170,27 +172,6 @@
                 </tr>
               </thead>
               <tbody id="historyBody"></tbody>
-            </table>
-          </div>
-        </details>
-      </section>
-
-      <section class="card span-2">
-        <details>
-          <summary>Seguimiento de predicciones</summary>
-          <p id="predictionStatsSummary" class="hint">Aún no hay resultados registrados.</p>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Hora</th>
-                  <th>Números sugeridos</th>
-                  <th>Ganó</th>
-                  <th>Resultado</th>
-                </tr>
-              </thead>
-              <tbody id="predictionStatsBody"></tbody>
             </table>
           </div>
         </details>
