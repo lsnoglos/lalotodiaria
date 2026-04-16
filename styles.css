@@ -78,8 +78,22 @@ h1, h2, p { margin: 0.2rem 0; }
 
 .controls {
   display: flex;
+  align-items: center;
   gap: 0.7rem;
   margin-top: 0.7rem;
+}
+
+.game-select-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.game-select {
+  border-radius: 0.45rem;
+  border: 1px solid #3b4f7a;
+  background: #0b1220;
+  color: var(--text);
+  padding: 0.45rem 0.5rem;
 }
 
 .btn {

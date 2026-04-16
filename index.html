@@ -11,6 +11,11 @@
       <div class="header-expanded">
         <h1 class="app-title">Analizador Loto Diaria</h1>
         <div class="controls">
+          <label for="gameSelect" class="game-select-label">Juego</label>
+          <select id="gameSelect" class="game-select">
+            <option value="diaria" selected>Diaria</option>
+            <option value="juega3">Juega 3</option>
+          </select>
           <button id="refreshBtn" class="btn primary">Actualizar sorteo</button>
           <button id="generatePlayBtn" class="btn accent">Generar Jugada</button>
           <button id="copyPromptBtn" class="btn secondary">Copy Prompt</button>
@@ -25,7 +30,7 @@
 
     <main class="layout">
       <section class="card span-2">
-        <h2 class="board-title-small">Tablero 00 - 99</h2>
+        <h2 id="boardTitle" class="board-title-small">Tablero 00 - 99</h2>
         <div class="grid-controls">
           <label for="gridColumnsSelect">Columnas</label>
           <select id="gridColumnsSelect">
@@ -161,6 +166,7 @@
                   <th>Fecha</th>
                   <th>Hora</th>
                   <th>Número</th>
+                  <th>Sorteo</th>
                 </tr>
               </thead>
               <tbody id="historyBody"></tbody>
