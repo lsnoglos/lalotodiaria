@@ -10,7 +10,22 @@ const PREDICTION_PENDING_KEY = "juega3PredictionPending";
 const PREDICTION_RESULTS_KEY = "juega3PredictionResults";
 const PERSONAL_GAME_KEY = "juega3PersonalGameNumbers";
 const VIEW_MODE_KEY = "juega3ViewMode";
+const SELECTED_LOTTERY_KEY = "juega3SelectedLottery";
 const CACHE_TTL_MS = 30 * 60 * 1000;
+const LOTTERY_CONFIG = {
+  diaria: {
+    key: "diaria",
+    label: "Diaria",
+    requestName: "Diaria",
+    nameAliases: ["diaria"],
+  },
+  juega3: {
+    key: "juega3",
+    label: "Juega 3",
+    requestName: "Juga 3",
+    nameAliases: ["juga 3", "juega 3"],
+  },
+};
 const HOURS = ["12PM", "3PM", "6PM", "9PM"];
 const HOUR_LABELS = { "12PM": "12:00pm", "3PM": "3:00pm", "6PM": "6:00pm", "9PM": "9:00pm" };
 const GAME_SCHEDULE = {
@@ -33,6 +48,7 @@ let appState = {
   hourFilter: "ALL",
   personalGameNumbers: [],
   activeSequenceDraws: [],
+  selectedLottery: "diaria",
 };
 
 const els = {
@@ -41,6 +57,7 @@ const els = {
   refreshBtn: document.getElementById("refreshBtn"),
   generatePlayBtn: document.getElementById("generatePlayBtn"),
   copyPromptBtn: document.getElementById("copyPromptBtn"),
+  lotterySelect: document.getElementById("lotterySelect"),
   numberGrid: document.getElementById("numberGrid"),
   prevDrawBtn: document.getElementById("prevDrawBtn"),
   nextDrawBtn: document.getElementById("nextDrawBtn"),
@@ -76,6 +93,14 @@ const els = {
   sequenceForwardRangeBtn: document.getElementById("sequenceForwardRangeBtn"),
   sequenceStatus: document.getElementById("sequenceStatus"),
 };
+
+function normalizeLotteryKey(value) {
+  return LOTTERY_CONFIG[value] ? value : "diaria";
+}
+
+function getSelectedLotteryConfig() {
+  return LOTTERY_CONFIG[normalizeLotteryKey(appState.selectedLottery)];
+}
 
 function getVisibleData() {
   if (!Array.isArray(appState.data) || !appState.data.length) return [];
@@ -162,11 +187,12 @@ async function copyPromptToClipboard() {
   const previousMonthKey = getPreviousMonthKey(currentMonthKey);
   const monthNameCurrent = monthNameEs(currentMonthKey);
   const monthTransitionText = buildPromptMonthTransitionText(new Date());
+  const selectedLottery = getSelectedLotteryConfig();
 
   let previousMonthData = [];
   try {
-    const previousHtml = await fetchHistoryHtml(previousMonthKey, false);
-    previousMonthData = parseLotteryHtml(previousHtml, previousMonthKey);
+    const previousHtml = await fetchHistoryHtml(previousMonthKey, selectedLottery.key, false);
+    previousMonthData = parseLotteryHtml(previousHtml, previousMonthKey, selectedLottery.key);
   } catch (error) {
     console.warn("No se pudo cargar el mes anterior para el prompt:", error);
   }
@@ -209,22 +235,22 @@ function monthNameEs(monthKey) {
   return date.toLocaleString("es-NI", { month: "long" });
 }
 
-function loadFromCache(monthKey) {
+function loadFromCache(monthKey, lotteryKey) {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     const timestamp = Number(localStorage.getItem(CACHE_TIME_KEY) || 0);
     if (!raw || Date.now() - timestamp > CACHE_TTL_MS) return null;
 
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.month !== monthKey || !Array.isArray(parsed.data)) return null;
+    if (!parsed || parsed.month !== monthKey || parsed.lottery !== lotteryKey || !Array.isArray(parsed.data)) return null;
     return parsed.data;
   } catch {
     return null;
   }
 }
 
-function saveToCache(monthKey, data) {
-  localStorage.setItem(CACHE_KEY, JSON.stringify({ month: monthKey, data }));
+function saveToCache(monthKey, lotteryKey, data) {
+  localStorage.setItem(CACHE_KEY, JSON.stringify({ month: monthKey, lottery: lotteryKey, data }));
   localStorage.setItem(CACHE_TIME_KEY, String(Date.now()));
 }
 
@@ -297,10 +323,11 @@ function getPassedGameSlots(fromDate, toDate) {
   return slots.sort((a, b) => a.at - b.at);
 }
 
-async function fetchHistoryHtml(monthKey, force = false) {
+async function fetchHistoryHtml(monthKey, lotteryKey, force = false) {
+  const lottery = LOTTERY_CONFIG[normalizeLotteryKey(lotteryKey)];
   const body = new URLSearchParams({
     _method: "POST",
-    "data[Lottery][name]": "Juega 3",
+    "data[Lottery][name]": lottery.requestName,
     "data[Lottery][date]": monthKey,
   });
 
@@ -372,7 +399,8 @@ function parseSpanishDate(value) {
   return month ? `${year}-${month}-${day}` : "";
 }
 
-function parseLotteryHtml(html, monthKey) {
+function parseLotteryHtml(html, monthKey, lotteryKey) {
+  const lottery = LOTTERY_CONFIG[normalizeLotteryKey(lotteryKey)];
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
   const rows = [];
@@ -385,7 +413,7 @@ function parseLotteryHtml(html, monthKey) {
     if (!fecha || !fecha.startsWith(monthKey)) return;
 
     const gameName = (tds[1].querySelector("a")?.textContent || "").trim().toLowerCase();
-    if (!gameName.includes("juga 3")) return;
+    if (!lottery.nameAliases.some((alias) => gameName.includes(alias))) return;
 
     const hora = normalizeHour(tds[1].querySelector("sup")?.textContent || "");
     if (!hora) return;
@@ -1340,18 +1368,19 @@ function generatePlay(analysis) {
 
 async function refreshData(force = false) {
   const monthKey = getCurrentMonthKey();
+  const selectedLottery = getSelectedLotteryConfig();
 
   try {
     els.status.textContent = force
-      ? `Actualizando sorteo del mes ${monthKey} desde la página oficial…`
-      : `Cargando datos del mes ${monthKey}…`;
+      ? `Actualizando ${selectedLottery.label} del mes ${monthKey} desde la página oficial…`
+      : `Cargando ${selectedLottery.label} del mes ${monthKey}…`;
 
-    let data = !force ? loadFromCache(monthKey) : null;
+    let data = !force ? loadFromCache(monthKey, selectedLottery.key) : null;
 
     if (!data) {
-      const html = await fetchHistoryHtml(monthKey, force);
-      data = parseLotteryHtml(html, monthKey);
-      saveToCache(monthKey, data);
+      const html = await fetchHistoryHtml(monthKey, selectedLottery.key, force);
+      data = parseLotteryHtml(html, monthKey, selectedLottery.key);
+      saveToCache(monthKey, selectedLottery.key, data);
     }
 
     appState.activeMonth = monthKey;
@@ -1360,7 +1389,7 @@ async function refreshData(force = false) {
       appState = { ...appState, data: [], analysis: null };
       resetSequence();
       showNoMonthlyData(monthKey);
-      els.status.textContent = `Sin sorteos para ${monthKey}.`;
+      els.status.textContent = `Sin sorteos de ${selectedLottery.label} para ${monthKey}.`;
       return;
     }
 
@@ -1376,7 +1405,7 @@ async function refreshData(force = false) {
     const last = data[data.length - 1];
     const updatedAt = new Date().toLocaleString();
     els.lastDrawHighlight.textContent = `Último sorteo: ${last.fecha} · ${HOUR_LABELS[last.hora] || last.hora} · ${last.numero} · juego ${last.sorteo || "--"}`;
-    els.status.textContent = `OK · ${data.length} sorteos cargados (${monthKey}) · ${updatedAt}`;
+    els.status.textContent = `OK · ${data.length} sorteos de ${selectedLottery.label} cargados (${monthKey}) · ${updatedAt}`;
   } catch (error) {
     console.error(error);
     els.status.textContent = `Error: ${error.message}`;
@@ -1384,6 +1413,12 @@ async function refreshData(force = false) {
 }
 
 els.refreshBtn.addEventListener("click", () => refreshData(true));
+els.lotterySelect?.addEventListener("change", (event) => {
+  const selected = normalizeLotteryKey(event.target.value);
+  appState.selectedLottery = selected;
+  localStorage.setItem(SELECTED_LOTTERY_KEY, selected);
+  refreshData(true);
+});
 els.generatePlayBtn.addEventListener("click", () => {
   if (!appState.analysis) return;
   generatePlay(appState.analysis);
@@ -1485,8 +1520,10 @@ els.clearPersonalGameBtn?.addEventListener("click", () => {
 });
 
 appState.personalGameNumbers = loadPersonalGameNumbers();
+appState.selectedLottery = normalizeLotteryKey(localStorage.getItem(SELECTED_LOTTERY_KEY) || "diaria");
 const savedView = localStorage.getItem(VIEW_MODE_KEY) || "default";
 appState.viewMode = ["default", "colorSequence", "numberSequence"].includes(savedView) ? savedView : "default";
+if (els.lotterySelect) els.lotterySelect.value = appState.selectedLottery;
 if (els.viewModeSelect) els.viewModeSelect.value = appState.viewMode;
 if (els.hourFilterSelect) els.hourFilterSelect.value = appState.hourFilter;
 

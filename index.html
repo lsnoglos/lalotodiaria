@@ -3,13 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Juega 3 Nicaragua · Analizador Inteligente</title>
+    <title>Lotería Nicaragua · Analizador Inteligente</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="app-header" id="appHeader">
       <div class="header-expanded">
-        <h1 class="app-title">Analizador Juega 3</h1>
+        <div class="lottery-switch">
+          <label for="lotterySelect">Juego</label>
+          <select id="lotterySelect" aria-label="Seleccionar juego">
+            <option value="diaria" selected>Diaria</option>
+            <option value="juega3">Juega 3</option>
+          </select>
+        </div>
+        <h1 class="app-title">Analizador de lotería</h1>
         <div class="controls">
           <button id="refreshBtn" class="btn primary">Actualizar sorteo</button>
           <button id="generatePlayBtn" class="btn accent">Generar Jugada</button>
