@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Loto Diaria Nicaragua · Analizador Inteligente</title>
+    <title>Juega 3 Nicaragua · Analizador Inteligente</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="app-header" id="appHeader">
       <div class="header-expanded">
-        <h1 class="app-title">Analizador Loto Diaria</h1>
+        <h1 class="app-title">Analizador Juega 3</h1>
         <div class="controls">
           <button id="refreshBtn" class="btn primary">Actualizar sorteo</button>
           <button id="generatePlayBtn" class="btn accent">Generar Jugada</button>
@@ -25,7 +25,7 @@
 
     <main class="layout">
       <section class="card span-2">
-        <h2 class="board-title-small">Tablero 00 - 99</h2>
+        <h2 class="board-title-small">Tablero 000 - 999</h2>
         <div class="grid-controls">
           <label for="gridColumnsSelect">Columnas</label>
           <select id="gridColumnsSelect">
@@ -37,7 +37,7 @@
             <option value="7">7</option>
             <option value="8">8</option>
             <option value="9">9</option>
-            <option value="10" selected>10</option>
+            <option value="10">10</option>
             <option value="11">11</option>
             <option value="12">12</option>
             <option value="13">13</option>
@@ -47,13 +47,13 @@
             <option value="17">17</option>
             <option value="18">18</option>
             <option value="19">19</option>
-            <option value="20">20</option>
+            <option value="20" selected>20</option>
             <option value="25">25</option>
           </select>
           <label for="gridStartSelect">Inicia con</label>
           <select id="gridStartSelect">
-            <option value="00">00</option>
-            <option value="01" selected>01</option>
+            <option value="000">000</option>
+            <option value="001" selected>001</option>
           </select>
           <label for="viewModeSelect">Vista</label>
           <select id="viewModeSelect">
@@ -119,8 +119,8 @@
 
       <section class="card span-2">
         <details>
-          <summary>Gráfica de comportamiento del mes (0-99)</summary>
-          <p class="hint chart-hint">Eje izquierdo: escala 00-99. Eje inferior: día del mes y número entre paréntesis.</p>
+          <summary>Gráfica de comportamiento del mes (000-999)</summary>
+          <p class="hint chart-hint">Eje izquierdo: escala 000-999. Eje inferior: día del mes y número entre paréntesis.</p>
           <div class="month-chart-wrap">
             <canvas id="monthTrendChart" aria-label="Gráfica de tendencia mensual de números" role="img"></canvas>
           </div>
@@ -161,6 +161,7 @@
                   <th>Fecha</th>
                   <th>Hora</th>
                   <th>Número</th>
+                  <th>Juego</th>
                 </tr>
               </thead>
               <tbody id="historyBody"></tbody>
