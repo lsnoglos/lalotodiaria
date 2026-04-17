@@ -327,6 +327,81 @@ function generarCandidatosOrdenados(n) {
   ];
 }
 
+function crearEstadoFrecuencias(history) {
+  const visitCount = Object.fromEntries(Array.from({ length: appState.gameConfig.max + 1 }, (_, i) => [i, 0]));
+  const digitCount = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [i, 0]));
+  const sumCount = Object.fromEntries(Array.from({ length: 19 }, (_, i) => [i, 0]));
+  const diffCount = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [i, 0]));
+
+  const applyNumber = (value) => {
+    const n = parseNumberValue(value);
+    const a = Math.floor(n / 10);
+    const b = n % 10;
+    const s = a + b;
+    const d = Math.abs(a - b);
+
+    visitCount[n] = (visitCount[n] || 0) + 1;
+    digitCount[a] = (digitCount[a] || 0) + 1;
+    digitCount[b] = (digitCount[b] || 0) + 1;
+    sumCount[s] = (sumCount[s] || 0) + 1;
+    diffCount[d] = (diffCount[d] || 0) + 1;
+  };
+
+  history.forEach((n) => applyNumber(n));
+
+  return { visitCount, digitCount, sumCount, diffCount, applyNumber };
+}
+
+function calcularPuntajeGlobal(x, state) {
+  const a = Math.floor(x / 10);
+  const b = x % 10;
+  const invX = 10 * b + a;
+  const s = a + b;
+  const d = Math.abs(a - b);
+
+  return (
+    5 * (state.visitCount[x] || 0) +
+    3 * (state.visitCount[invX] || 0) +
+    2 * (state.digitCount[a] || 0) +
+    2 * (state.digitCount[b] || 0) +
+    1 * (state.sumCount[s] || 0) +
+    1 * (state.diffCount[d] || 0)
+  );
+}
+
+function seleccionarSiguientePorPuntaje(actual, state) {
+  const candidatos = generarCandidatosOrdenados(actual);
+  let mejor = candidatos[0];
+  let mejorScore = calcularPuntajeGlobal(mejor, state);
+
+  for (let i = 1; i < candidatos.length; i += 1) {
+    const candidato = candidatos[i];
+    const score = calcularPuntajeGlobal(candidato, state);
+    if (score < mejorScore) {
+      mejor = candidato;
+      mejorScore = score;
+    }
+  }
+
+  return mejor;
+}
+
+function generarSecuenciaDeterministaConMemoria(history, pasos = 28) {
+  if (!Array.isArray(history) || !history.length) return [];
+  const state = crearEstadoFrecuencias(history);
+  let actual = parseNumberValue(history[history.length - 1]);
+  const generados = [];
+
+  for (let i = 0; i < pasos; i += 1) {
+    const siguiente = seleccionarSiguientePorPuntaje(actual, state);
+    generados.push(siguiente);
+    state.applyNumber(siguiente);
+    actual = siguiente;
+  }
+
+  return generados;
+}
+
 function siguiente(n, visitados) {
   const candidatos = generarCandidatosOrdenados(n);
   for (const c of candidatos) {
@@ -833,17 +908,17 @@ function renderTop() {
     return;
   }
 
-  const visitadosBase = Object.fromEntries(Array.from({ length: appState.gameConfig.max + 1 }, (_, i) => [i, 0]));
-  visibleData.forEach((draw) => {
-    const n = parseNumberValue(draw.numero);
-    visitadosBase[n] = (visitadosBase[n] || 0) + 1;
-  });
-  const inicio = parseNumberValue(lastDraw.numero);
-  const secuenciaSugerida = generarSecuencia(inicio, 5, { ...visitadosBase }).map((n) =>
-    String(n).padStart(appState.gameConfig.digits, "0")
-  );
-  const secuenciaProbable = generarSecuencia(inicio, 10, { ...visitadosBase })
-    .slice(1, 6)
+  const history = visibleData.map((draw) => parseNumberValue(draw.numero));
+  const secuenciaBase =
+    appState.gameConfig.key === "diaria"
+      ? generarSecuenciaDeterministaConMemoria(history, 28)
+      : generarSecuencia(parseNumberValue(lastDraw.numero), 10);
+
+  const secuenciaSugerida = secuenciaBase
+    .slice(0, 5)
+    .map((n) => String(n).padStart(appState.gameConfig.digits, "0"));
+  const secuenciaProbable = secuenciaBase
+    .slice(5, 10)
     .map((n) => String(n).padStart(appState.gameConfig.digits, "0"));
 
   appState.currentTopFive = secuenciaSugerida.slice();
