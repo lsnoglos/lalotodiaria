@@ -54,6 +54,7 @@ let appState = {
   hourFilter: "ALL",
   personalGameNumbers: [],
   activeSequenceDraws: [],
+  sequenceTargetDate: "",
 };
 
 const els = {
@@ -90,14 +91,8 @@ const els = {
   personalGameSummary: document.getElementById("personalGameSummary"),
   personalGameNumbers: document.getElementById("personalGameNumbers"),
   clearPersonalGameBtn: document.getElementById("clearPersonalGameBtn"),
-  sequenceStartDate: document.getElementById("sequenceStartDate"),
-  sequenceStartHour: document.getElementById("sequenceStartHour"),
-  sequenceEndDate: document.getElementById("sequenceEndDate"),
-  sequenceEndHour: document.getElementById("sequenceEndHour"),
   drawSequenceBtn: document.getElementById("drawSequenceBtn"),
   resetSequenceBtn: document.getElementById("resetSequenceBtn"),
-  sequenceBackRangeBtn: document.getElementById("sequenceBackRangeBtn"),
-  sequenceForwardRangeBtn: document.getElementById("sequenceForwardRangeBtn"),
   sequenceStatus: document.getElementById("sequenceStatus"),
 };
 
@@ -1022,24 +1017,24 @@ function renderMonthTrendChart(data) {
   });
 }
 
-function buildSequenceDate(dateInput, hourKey) {
-  if (!dateInput || !hourKey) return null;
-  const [year, month, day] = dateInput.split("-").map(Number);
-  const schedule = GAME_SCHEDULE[hourKey];
-  if (!year || !month || !day || !schedule) return null;
-  return new Date(year, month - 1, day, schedule.hour, schedule.minute, 0, 0);
+function getSequenceTargetDate() {
+  if (appState.sequenceTargetDate) return appState.sequenceTargetDate;
+  return getTodayDateKey(new Date());
 }
 
-function getSequenceDrawsInRange() {
-  const start = buildSequenceDate(els.sequenceStartDate?.value, els.sequenceStartHour?.value);
-  const end = buildSequenceDate(els.sequenceEndDate?.value, els.sequenceEndHour?.value);
-  if (!start || !end || end < start) return { draws: [], error: "Rango inválido: revisa fechas y juegos." };
-  const draws = appState.data.filter((draw) => {
-    const drawAt = drawToDate(draw);
-    return drawAt >= start && drawAt <= end;
-  });
-  if (draws.length < 2) return { draws: [], error: "Necesitas al menos 2 sorteos en el rango para trazar la línea." };
-  return { draws, error: "" };
+function getSequenceDrawsForTargetDate() {
+  const dateKey = getSequenceTargetDate();
+  if (!dateKey) return { draws: [], dateKey, error: "No se pudo resolver la fecha objetivo para el trazo." };
+  const drawsOnDate = appState.data.filter((draw) => draw.fecha === dateKey);
+  const draws = appState.hourFilter === "ALL" ? drawsOnDate : drawsOnDate.filter((draw) => draw.hora === appState.hourFilter);
+  if (draws.length < 2) {
+    return {
+      draws: [],
+      dateKey,
+      error: "No hay suficientes sorteos para trazar (mínimo 2). Prueba otro día o cambia el filtro de hora.",
+    };
+  }
+  return { draws, dateKey, error: "" };
 }
 
 function renderSequenceOverlay() {
@@ -1085,11 +1080,14 @@ function renderSequenceOverlay() {
 function resetSequence() {
   appState.activeSequenceDraws = [];
   renderSequenceOverlay();
-  if (els.sequenceStatus) els.sequenceStatus.textContent = "Secuencia reiniciada.";
+  if (els.sequenceStatus) {
+    const targetDate = getSequenceTargetDate();
+    els.sequenceStatus.textContent = `Trazo reiniciado (${targetDate}).`;
+  }
 }
 
 function applySequenceRange() {
-  const { draws, error } = getSequenceDrawsInRange();
+  const { draws, error, dateKey } = getSequenceDrawsForTargetDate();
   if (error) {
     appState.activeSequenceDraws = [];
     renderSequenceOverlay();
@@ -1101,102 +1099,12 @@ function applySequenceRange() {
   const from = draws[0];
   const to = draws[draws.length - 1];
   if (els.sequenceStatus) {
-    els.sequenceStatus.textContent = `Secuencia activa: ${draws.length} sorteos (${from.fecha} ${HOUR_LABELS[from.hora]} → ${to.fecha} ${HOUR_LABELS[to.hora]}).`;
+    els.sequenceStatus.textContent = `Trazo activo (${dateKey}): ${draws.length} sorteos (${HOUR_LABELS[from.hora]} → ${HOUR_LABELS[to.hora]}).`;
   }
-}
-
-function setSequenceInputsFromDrawRange(startDraw, endDraw) {
-  if (!startDraw || !endDraw) return;
-  if (!els.sequenceStartDate || !els.sequenceEndDate || !els.sequenceStartHour || !els.sequenceEndHour) return;
-  els.sequenceStartDate.value = startDraw.fecha;
-  els.sequenceStartHour.value = startDraw.hora;
-  els.sequenceEndDate.value = endDraw.fecha;
-  els.sequenceEndHour.value = endDraw.hora;
 }
 
 function getTodayDateKey(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-function getHoursPlayedOnDate(dateKey, now = new Date()) {
-  const nowTime = now.getTime();
-  const played = appState.data
-    .filter((draw) => draw.fecha === dateKey && drawToDate(draw).getTime() <= nowTime)
-    .map((draw) => draw.hora)
-    .filter((hour) => HOURS.includes(hour));
-
-  const unique = [...new Set(played)];
-  return HOURS.filter((hour) => unique.includes(hour));
-}
-
-function adjustSequenceInputsForDate(dateKey, now = new Date()) {
-  if (!dateKey || !els.sequenceStartDate || !els.sequenceEndDate || !els.sequenceStartHour || !els.sequenceEndHour) return;
-
-  const todayKey = getTodayDateKey(now);
-  els.sequenceStartDate.value = dateKey;
-  els.sequenceEndDate.value = dateKey;
-  els.sequenceStartHour.value = "12PM";
-
-  if (dateKey < todayKey) {
-    els.sequenceEndHour.value = "9PM";
-    return;
-  }
-
-  if (dateKey !== todayKey) {
-    els.sequenceEndHour.value = "9PM";
-    return;
-  }
-
-  const playedHours = getHoursPlayedOnDate(dateKey, now);
-  if (playedHours.length > 1) {
-    els.sequenceEndHour.value = playedHours[playedHours.length - 1];
-    return;
-  }
-
-  els.sequenceEndHour.value = "9PM";
-}
-
-function shiftSequenceBySelectedSpan(direction) {
-  if (direction !== -1 && direction !== 1) return;
-  const { draws, error } = getSequenceDrawsInRange();
-  if (error) {
-    if (els.sequenceStatus) els.sequenceStatus.textContent = error;
-    return;
-  }
-
-  const spanSize = draws.length;
-  const firstIndex = appState.data.indexOf(draws[0]);
-  const lastIndex = appState.data.indexOf(draws[draws.length - 1]);
-  if (firstIndex < 0 || lastIndex < 0) return;
-
-  let nextStartIndex;
-  let nextEndIndex;
-  if (direction < 0) {
-    nextStartIndex = firstIndex - spanSize;
-    nextEndIndex = firstIndex - 1;
-  } else {
-    nextStartIndex = lastIndex + 1;
-    nextEndIndex = lastIndex + spanSize;
-  }
-
-  if (nextStartIndex < 0 || nextEndIndex >= appState.data.length) {
-    if (els.sequenceStatus) {
-      els.sequenceStatus.textContent = "No hay suficientes sorteos para mover ese mismo rango en esa dirección.";
-    }
-    return;
-  }
-
-  const nextStartDraw = appState.data[nextStartIndex];
-  const nextEndDraw = appState.data[nextEndIndex];
-  if (!nextStartDraw || !nextEndDraw) return;
-
-  const sameDateRange = nextStartDraw.fecha === nextEndDraw.fecha;
-  if (sameDateRange) {
-    adjustSequenceInputsForDate(nextStartDraw.fecha);
-  } else {
-    setSequenceInputsFromDrawRange(nextStartDraw, nextEndDraw);
-  }
-  applySequenceRange();
 }
 
 function buildRealtimeSuggestions(data, analysis, limit = 2) {
@@ -1364,7 +1272,9 @@ async function refreshData(force = false) {
     const monthCap = monthNameEs(monthKey).replace(/^./, (s) => s.toUpperCase());
     els.hourPanelTitle.textContent = `Panel por hora del mes de ${monthCap}`;
     els.historyTitle.textContent = `Historial del mes de ${monthCap}`;
-    presetSequenceRangeForToday();
+    appState.sequenceTargetDate = getTodayDateKey(new Date());
+    resetSequence();
+    if (els.sequenceStatus) els.sequenceStatus.textContent = `Trazo listo para ${appState.sequenceTargetDate}.`;
     renderByTimeline();
 
     const last = data[data.length - 1];
@@ -1443,12 +1353,6 @@ els.drawSequenceBtn?.addEventListener("click", () => {
 els.resetSequenceBtn?.addEventListener("click", () => {
   resetSequence();
 });
-els.sequenceBackRangeBtn?.addEventListener("click", () => {
-  shiftSequenceBySelectedSpan(-1);
-});
-els.sequenceForwardRangeBtn?.addEventListener("click", () => {
-  shiftSequenceBySelectedSpan(1);
-});
 els.hourFilterSelect?.addEventListener("change", (event) => {
   const selectedHour = event.target.value;
   const allowed = new Set(["ALL", ...HOURS]);
@@ -1458,11 +1362,17 @@ els.hourFilterSelect?.addEventListener("change", (event) => {
 els.prevDrawBtn?.addEventListener("click", () => {
   if (appState.visibleDrawIndex <= 0) return;
   appState.visibleDrawIndex -= 1;
+  const activeDraw = appState.data[appState.visibleDrawIndex];
+  if (activeDraw?.fecha) appState.sequenceTargetDate = activeDraw.fecha;
+  resetSequence();
   renderByTimeline();
 });
 els.nextDrawBtn?.addEventListener("click", () => {
   if (appState.visibleDrawIndex >= appState.data.length - 1) return;
   appState.visibleDrawIndex += 1;
+  const activeDraw = appState.data[appState.visibleDrawIndex];
+  if (activeDraw?.fecha) appState.sequenceTargetDate = activeDraw.fecha;
+  resetSequence();
   renderByTimeline();
 });
 
@@ -1522,13 +1432,6 @@ function applyHeaderScrollEffect() {
   els.appHeader.classList.toggle("is-compact", compact);
 }
 
-function presetSequenceRangeForToday() {
-  if (!els.sequenceStartDate || !els.sequenceEndDate || !els.sequenceStartHour || !els.sequenceEndHour) return;
-  const now = new Date();
-  const today = getTodayDateKey(now);
-  adjustSequenceInputsForDate(today, now);
-  applySequenceRange();
-}
 window.addEventListener("scroll", applyHeaderScrollEffect, { passive: true });
 applyHeaderScrollEffect();
 refreshData();
