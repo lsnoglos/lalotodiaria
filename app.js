@@ -1114,6 +1114,48 @@ function setSequenceInputsFromDrawRange(startDraw, endDraw) {
   els.sequenceEndHour.value = endDraw.hora;
 }
 
+function getTodayDateKey(now = new Date()) {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function getHoursPlayedOnDate(dateKey, now = new Date()) {
+  const nowTime = now.getTime();
+  const played = appState.data
+    .filter((draw) => draw.fecha === dateKey && drawToDate(draw).getTime() <= nowTime)
+    .map((draw) => draw.hora)
+    .filter((hour) => HOURS.includes(hour));
+
+  const unique = [...new Set(played)];
+  return HOURS.filter((hour) => unique.includes(hour));
+}
+
+function adjustSequenceInputsForDate(dateKey, now = new Date()) {
+  if (!dateKey || !els.sequenceStartDate || !els.sequenceEndDate || !els.sequenceStartHour || !els.sequenceEndHour) return;
+
+  const todayKey = getTodayDateKey(now);
+  els.sequenceStartDate.value = dateKey;
+  els.sequenceEndDate.value = dateKey;
+  els.sequenceStartHour.value = "12PM";
+
+  if (dateKey < todayKey) {
+    els.sequenceEndHour.value = "9PM";
+    return;
+  }
+
+  if (dateKey !== todayKey) {
+    els.sequenceEndHour.value = "9PM";
+    return;
+  }
+
+  const playedHours = getHoursPlayedOnDate(dateKey, now);
+  if (playedHours.length > 1) {
+    els.sequenceEndHour.value = playedHours[playedHours.length - 1];
+    return;
+  }
+
+  els.sequenceEndHour.value = "9PM";
+}
+
 function shiftSequenceBySelectedSpan(direction) {
   if (direction !== -1 && direction !== 1) return;
   const { draws, error } = getSequenceDrawsInRange();
@@ -1144,7 +1186,16 @@ function shiftSequenceBySelectedSpan(direction) {
     return;
   }
 
-  setSequenceInputsFromDrawRange(appState.data[nextStartIndex], appState.data[nextEndIndex]);
+  const nextStartDraw = appState.data[nextStartIndex];
+  const nextEndDraw = appState.data[nextEndIndex];
+  if (!nextStartDraw || !nextEndDraw) return;
+
+  const sameDateRange = nextStartDraw.fecha === nextEndDraw.fecha;
+  if (sameDateRange) {
+    adjustSequenceInputsForDate(nextStartDraw.fecha);
+  } else {
+    setSequenceInputsFromDrawRange(nextStartDraw, nextEndDraw);
+  }
   applySequenceRange();
 }
 
@@ -1474,11 +1525,8 @@ function applyHeaderScrollEffect() {
 function presetSequenceRangeForToday() {
   if (!els.sequenceStartDate || !els.sequenceEndDate || !els.sequenceStartHour || !els.sequenceEndHour) return;
   const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  els.sequenceStartDate.value = today;
-  els.sequenceEndDate.value = today;
-  els.sequenceStartHour.value = "12PM";
-  els.sequenceEndHour.value = "9PM";
+  const today = getTodayDateKey(now);
+  adjustSequenceInputsForDate(today, now);
   applySequenceRange();
 }
 window.addEventListener("scroll", applyHeaderScrollEffect, { passive: true });
