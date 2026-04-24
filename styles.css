@@ -46,24 +46,6 @@ body {
   transition: transform 0.35s ease;
 }
 
-.app-header.is-compact {
-  padding-top: 0.55rem;
-  padding-bottom: 0.55rem;
-  background: rgba(8, 18, 41, 0.88);
-  border-bottom-color: #304a82;
-}
-
-.app-header.is-compact .header-expanded {
-  max-height: 0;
-  opacity: 0;
-  transform: translateY(-10px);
-  pointer-events: none;
-}
-
-.app-header.is-compact .header-core {
-  transform: translateY(-2px);
-}
-
 h1, h2, p { margin: 0.2rem 0; }
 .app-title {
   font-size: 1rem;
@@ -139,20 +121,6 @@ h1, h2, p { margin: 0.2rem 0; }
   color: #c7d2fe;
 }
 
-.timeline-filter-label {
-  margin-left: auto;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.timeline-filter-select {
-  border-radius: 0.45rem;
-  border: 1px solid #3b4f7a;
-  background: #0b1220;
-  color: var(--text);
-  padding: 0.35rem 0.45rem;
-}
-
 .grid-controls label {
   font-size: 0.9rem;
   color: var(--muted);
@@ -167,7 +135,6 @@ h1, h2, p { margin: 0.2rem 0; }
 }
 
 .status { color: var(--muted); display: block; margin-top: 0.25rem; opacity: 1; transition: opacity 0.2s ease; }
-.app-header.is-compact .status { opacity: 0; pointer-events: none; height: 0; margin: 0; overflow: hidden; }
 .last-draw-highlight {
   margin-top: 0.4rem;
   font-size: 1rem;
@@ -362,23 +329,6 @@ h1, h2, p { margin: 0.2rem 0; }
   text-overflow: ellipsis;
 }
 
-.chart-hint {
-  margin-bottom: 0.45rem;
-}
-
-.month-chart-wrap {
-  width: 100%;
-  overflow: hidden;
-  max-height: 50vh;
-}
-
-#monthTrendChart {
-  width: 100%;
-  max-height: 50vh;
-  border: 1px solid #334155;
-  border-radius: 0.6rem;
-  background: #081224;
-}
 
 .sequence-controls {
   margin-top: 0.75rem;
@@ -438,61 +388,10 @@ h1, h2, p { margin: 0.2rem 0; }
   font-size: 0.75rem;
 }
 
-.accordion details {
-  border: 1px solid #334155;
-  border-radius: 0.6rem;
-  margin: 0.4rem 0;
-  overflow: hidden;
-}
-
-.accordion summary {
-  cursor: pointer;
-  padding: 0.7rem;
-  background: #0b1220;
-  font-weight: 700;
-}
-
-.accordion-content {
-  padding: 0.7rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
 .card > details > summary {
   cursor: pointer;
   font-size: 1.05rem;
   font-weight: 700;
-}
-
-.algorithm-panels {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.algo-card {
-  border: 1px solid #334155;
-  border-radius: 0.7rem;
-  padding: 0.5rem;
-  background: #0b1220;
-}
-
-.algo-title {
-  font-size: 0.9rem;
-  font-weight: 800;
-}
-
-.algo-note {
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.shape {
-  margin-top: 0.4rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: pre;
-  font-size: 0.72rem;
-  color: #c6d8ff;
 }
 
 .grid-tooltip {
