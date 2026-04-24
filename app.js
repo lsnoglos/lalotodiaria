@@ -59,6 +59,7 @@ let appState = {
 const els = {
   appHeader: document.getElementById("appHeader"),
   status: document.getElementById("status"),
+  loadingIndicator: document.getElementById("loadingIndicator"),
   refreshBtn: document.getElementById("refreshBtn"),
   generatePlayBtn: document.getElementById("generatePlayBtn"),
   copyPromptBtn: document.getElementById("copyPromptBtn"),
@@ -86,6 +87,20 @@ const els = {
   resetSequenceBtn: document.getElementById("resetSequenceBtn"),
   sequenceStatus: document.getElementById("sequenceStatus"),
 };
+let loadingCount = 0;
+
+function setLoadingState(isLoading, statusMessage = "") {
+  if (isLoading) loadingCount += 1;
+  else loadingCount = Math.max(loadingCount - 1, 0);
+
+  const loadingActive = loadingCount > 0;
+  if (els.loadingIndicator) {
+    els.loadingIndicator.classList.toggle("visible", loadingActive);
+    els.loadingIndicator.setAttribute("aria-hidden", loadingActive ? "false" : "true");
+  }
+  document.body.classList.toggle("is-loading", loadingActive);
+  if (statusMessage) els.status.textContent = statusMessage;
+}
 
 function getVisibleData() {
   if (!Array.isArray(appState.data) || !appState.data.length) return [];
@@ -196,27 +211,29 @@ function buildMonthGamesText(draws, emptyText = "Sin datos") {
 }
 
 async function copyPromptToClipboard() {
+  setLoadingState(true, "Construyendo prompt…");
   const currentMonthKey = appState.activeMonth || getCurrentMonthKey();
   const previousMonthKey = getPreviousMonthKey(currentMonthKey);
   const monthNameCurrent = monthNameEs(currentMonthKey);
   const monthTransitionText = buildPromptMonthTransitionText(new Date());
 
-  let previousMonthData = [];
   try {
-    const previousHtml = await fetchHistoryHtml(previousMonthKey, false);
-    previousMonthData = parseLotteryHtml(previousHtml, previousMonthKey, appState.gameConfig);
-  } catch (error) {
-    console.warn("No se pudo cargar el mes anterior para el prompt:", error);
-  }
+    let previousMonthData = [];
+    try {
+      const previousHtml = await fetchHistoryHtml(previousMonthKey, false);
+      previousMonthData = parseLotteryHtml(previousHtml, previousMonthKey, appState.gameConfig);
+    } catch (error) {
+      console.warn("No se pudo cargar el mes anterior para el prompt:", error);
+    }
 
-  const currentMonthData = appState.data || [];
-  const previousGames = buildMonthGamesText(previousMonthData, "1....");
-  const currentGames = buildMonthGamesText(currentMonthData, "1....");
-  const numericStart = String(appState.gameConfig.min).padStart(appState.gameConfig.digits, "0");
-  const numericEnd = String(appState.gameConfig.max).padStart(appState.gameConfig.digits, "0");
-  const totalNumbers = appState.gameConfig.max - appState.gameConfig.min + 1;
+    const currentMonthData = appState.data || [];
+    const previousGames = buildMonthGamesText(previousMonthData, "1....");
+    const currentGames = buildMonthGamesText(currentMonthData, "1....");
+    const numericStart = String(appState.gameConfig.min).padStart(appState.gameConfig.digits, "0");
+    const numericEnd = String(appState.gameConfig.max).padStart(appState.gameConfig.digits, "0");
+    const totalNumbers = appState.gameConfig.max - appState.gameConfig.min + 1;
 
-  const prompt = `Eres un jugador profesional de juegos al azar, te apasiona buscar algoritmos matemáticos, crees que el azar es un conjunto desordenado de secuencias ordenadas, porque la naturaleza te lo enseñó así,  siempre hay formas que parecen un caos, pero que terminan formando algo hermoso que se repite en el tiempo. Te compartiré los juegos que van de ${monthNameCurrent}, ${monthTransitionText}.
+    const prompt = `Eres un jugador profesional de juegos al azar, te apasiona buscar algoritmos matemáticos, crees que el azar es un conjunto desordenado de secuencias ordenadas, porque la naturaleza te lo enseñó así,  siempre hay formas que parecen un caos, pero que terminan formando algo hermoso que se repite en el tiempo. Te compartiré los juegos que van de ${monthNameCurrent}, ${monthTransitionText}.
 
 Diario hay 4 juegos, a las 12 del medio dia, a las 3 pm, 6 y 9 pm. Esos juegos deben seguir algún patrón, quizás el primero que cae si es menor que el segundo, resta x al segundo, y el segundo suma o resta al tercero, al final estos numeros crean una secuencia, y el cuarto se basa en esa respuesta, busca patrones.
 
@@ -236,8 +253,11 @@ Mes actual:
 
 ${currentGames}`;
 
-  await navigator.clipboard.writeText(prompt);
-  els.status.textContent = "Prompt copiado al portapapeles.";
+    await navigator.clipboard.writeText(prompt);
+    els.status.textContent = "Prompt copiado al portapapeles.";
+  } finally {
+    setLoadingState(false);
+  }
 }
 function getCurrentMonthKey() {
   const now = new Date();
@@ -1066,12 +1086,12 @@ function generatePlay(analysis) {
 async function refreshData(force = false) {
   const monthKey = getCurrentMonthKey();
   const gameLabel = appState.gameConfig.label;
+  const loadingMessage = force
+    ? `Actualizando ${gameLabel} del mes ${monthKey} desde la página oficial…`
+    : `Cargando ${gameLabel} del mes ${monthKey}…`;
+  setLoadingState(true, loadingMessage);
 
   try {
-    els.status.textContent = force
-      ? `Actualizando ${gameLabel} del mes ${monthKey} desde la página oficial…`
-      : `Cargando ${gameLabel} del mes ${monthKey}…`;
-
     let data = !force ? loadFromCache(monthKey) : null;
 
     if (!data) {
@@ -1111,6 +1131,8 @@ async function refreshData(force = false) {
   } catch (error) {
     console.error(error);
     els.status.textContent = `Error: ${error.message}`;
+  } finally {
+    setLoadingState(false);
   }
 }
 
