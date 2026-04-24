@@ -9,6 +9,7 @@ const CACHE_TIME_KEY = "lotoDataUpdatedAt";
 const PERSONAL_GAME_KEY = "lotoPersonalGameNumbers";
 const VIEW_MODE_KEY = "lotoViewMode";
 const SELECTED_GAME_KEY = "lotoSelectedGame";
+const SELECTED_MONTH_KEY = "lotoSelectedMonth";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const HOURS = ["12PM", "3PM", "6PM", "9PM"];
 const HOUR_LABELS = { "12PM": "12:00pm", "3PM": "3:00pm", "6PM": "6:00pm", "9PM": "9:00pm" };
@@ -45,6 +46,7 @@ let appState = {
   data: [],
   analysis: null,
   activeMonth: "",
+  selectedMonth: "",
   visibleDateIndex: -1,
   currentTopFive: [],
   gridColumns: 10,
@@ -64,6 +66,7 @@ const els = {
   generatePlayBtn: document.getElementById("generatePlayBtn"),
   copyPromptBtn: document.getElementById("copyPromptBtn"),
   gameSelect: document.getElementById("gameSelect"),
+  monthSelect: document.getElementById("monthSelect"),
   boardTitle: document.getElementById("boardTitle"),
   numberGrid: document.getElementById("numberGrid"),
   prevDrawBtn: document.getElementById("prevDrawBtn"),
@@ -175,11 +178,10 @@ function buildPromptMonthTransitionText(now = new Date()) {
 
 function updateGameUiLabels() {
   if (els.boardTitle) els.boardTitle.textContent = appState.gameConfig.boardTitle;
-  const monthCap = monthNameEs(getCurrentMonthKey()).replace(/^./, (s) => s.toUpperCase());
+  const monthKey = appState.selectedMonth || getCurrentMonthKey();
+  const monthCap = monthNameEs(monthKey).replace(/^./, (s) => s.toUpperCase());
   const title = `Loto diaria o juga tres del mes de ${monthCap}`;
   document.title = `${title} · Nicaragua`;
-  const appTitle = document.querySelector(".app-title");
-  if (appTitle) appTitle.textContent = title;
 }
 
 function updateGridStartOptions() {
@@ -262,6 +264,34 @@ ${currentGames}`;
 function getCurrentMonthKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function buildRecentMonthKeys(total = 13, fromMonthKey = getCurrentMonthKey()) {
+  const keys = [];
+  let cursor = fromMonthKey;
+  for (let i = 0; i < total; i += 1) {
+    keys.push(cursor);
+    cursor = getPreviousMonthKey(cursor);
+  }
+  return keys;
+}
+
+function formatMonthOptionLabel(monthKey) {
+  const [year] = monthKey.split("-");
+  const month = monthNameEs(monthKey).replace(/^./, (s) => s.toUpperCase());
+  return `${month} ${year}`;
+}
+
+function populateMonthOptions(selectedMonthKey = getCurrentMonthKey()) {
+  if (!els.monthSelect) return;
+  const monthKeys = buildRecentMonthKeys(13);
+  const fallbackMonth = monthKeys[0];
+  const validSelected = monthKeys.includes(selectedMonthKey) ? selectedMonthKey : fallbackMonth;
+  els.monthSelect.innerHTML = monthKeys
+    .map((monthKey) => `<option value="${monthKey}">${formatMonthOptionLabel(monthKey)}</option>`)
+    .join("");
+  els.monthSelect.value = validSelected;
+  appState.selectedMonth = validSelected;
 }
 
 function monthNameEs(monthKey) {
@@ -1072,7 +1102,7 @@ function showNoMonthlyData(monthKey) {
   els.numberGrid.innerHTML = "";
   els.topRecommendations.innerHTML = "";
   els.historyBody.innerHTML = `<tr><td colspan=\"4\">Aún no hay sorteos para ${monthCap}. Puedes consultar el mes anterior para estimar el primer número de ${monthCap}.</td></tr>`;
-  els.generatedPlay.textContent = `Sin jugada sugerida por falta de sorteos de ${appState.gameConfig.label} en el mes actual.`;
+  els.generatedPlay.textContent = `Sin jugada sugerida por falta de sorteos de ${appState.gameConfig.label} en el mes seleccionado.`;
   els.lastDrawHighlight.textContent = "Último sorteo: --";
   appState.visibleDateIndex = -1;
   renderTimelineControls();
@@ -1084,7 +1114,7 @@ function generatePlay(analysis) {
 }
 
 async function refreshData(force = false) {
-  const monthKey = getCurrentMonthKey();
+  const monthKey = appState.selectedMonth || getCurrentMonthKey();
   const gameLabel = appState.gameConfig.label;
   const loadingMessage = force
     ? `Actualizando ${gameLabel} del mes ${monthKey} desde la página oficial…`
@@ -1169,6 +1199,14 @@ els.copyPromptBtn?.addEventListener("click", async () => {
 });
 els.gameSelect?.addEventListener("change", async (event) => {
   await switchGame(event.target.value);
+});
+els.monthSelect?.addEventListener("change", async (event) => {
+  const monthKey = event.target.value;
+  if (!monthKey) return;
+  appState.selectedMonth = monthKey;
+  localStorage.setItem(SELECTED_MONTH_KEY, monthKey);
+  updateGameUiLabels();
+  await refreshData(false);
 });
 els.gridColumnsSelect.addEventListener("change", (event) => {
   const selectedColumns = Number(event.target.value);
@@ -1259,6 +1297,8 @@ const savedGame = localStorage.getItem(SELECTED_GAME_KEY) || "diaria";
 appState.selectedGame = GAME_CONFIGS[savedGame] ? savedGame : "diaria";
 appState.gameConfig = GAME_CONFIGS[appState.selectedGame];
 if (els.gameSelect) els.gameSelect.value = appState.selectedGame;
+const savedMonth = localStorage.getItem(SELECTED_MONTH_KEY) || getCurrentMonthKey();
+populateMonthOptions(savedMonth);
 updateGameUiLabels();
 updateGridStartOptions();
 appState.personalGameNumbers = loadPersonalGameNumbers();

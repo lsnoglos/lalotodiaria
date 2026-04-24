@@ -9,7 +9,12 @@
   <body>
     <header class="app-header" id="appHeader">
       <div class="header-expanded">
-        <h1 class="app-title">Loto diaria o juga tres del mes de ...</h1>
+        <h1 class="app-title">
+          Loto diaria o juga tres del mes de
+          <select id="monthSelect" class="month-select" aria-label="Seleccionar mes">
+            <option value="">...</option>
+          </select>
+        </h1>
         <div class="controls">
           <label for="gameSelect" class="game-select-label">Juego</label>
           <select id="gameSelect" class="game-select">
