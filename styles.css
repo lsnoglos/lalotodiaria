@@ -50,6 +50,19 @@ h1, h2, p { margin: 0.2rem 0; }
 .app-title {
   font-size: 1rem;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.month-select {
+  border-radius: 0.45rem;
+  border: 1px solid #3b4f7a;
+  background: #0b1220;
+  color: var(--text);
+  padding: 0.35rem 0.45rem;
+  font-weight: 600;
 }
 .board-title-small {
   font-size: 0.82rem;
