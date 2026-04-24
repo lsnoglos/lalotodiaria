@@ -45,13 +45,12 @@ let appState = {
   data: [],
   analysis: null,
   activeMonth: "",
-  visibleDrawIndex: -1,
+  visibleDateIndex: -1,
   currentTopFive: [],
   gridColumns: 10,
   gridSortDirection: "asc",
   gridStartWith: "01",
   viewMode: "default",
-  hourFilter: "ALL",
   personalGameNumbers: [],
   activeSequenceDraws: [],
   sequenceTargetDate: "",
@@ -69,7 +68,6 @@ const els = {
   prevDrawBtn: document.getElementById("prevDrawBtn"),
   nextDrawBtn: document.getElementById("nextDrawBtn"),
   timelineLabel: document.getElementById("timelineLabel"),
-  hourFilterSelect: document.getElementById("hourFilterSelect"),
   topRecommendations: document.getElementById("topRecommendations"),
   realtimeRecommendations: document.getElementById("realtimeRecommendations"),
   verifySequenceBtn: document.getElementById("verifySequenceBtn"),
@@ -79,15 +77,8 @@ const els = {
   gridStartSelect: document.getElementById("gridStartSelect"),
   viewModeSelect: document.getElementById("viewModeSelect"),
   gridSortBtn: document.getElementById("gridSortBtn"),
-  monthTrendChart: document.getElementById("monthTrendChart"),
-  monthChartTitle: document.getElementById("monthChartTitle"),
-  monthChartHint: document.getElementById("monthChartHint"),
-  algorithmPanels: document.getElementById("algorithmPanels"),
-  hourAccordion: document.getElementById("hourAccordion"),
-  hourPanelTitle: document.getElementById("hourPanelTitle"),
   historyBody: document.getElementById("historyBody"),
   historyTitle: document.getElementById("historyTitle"),
-  accordionTemplate: document.getElementById("accordionTemplate"),
   personalGameSummary: document.getElementById("personalGameSummary"),
   personalGameNumbers: document.getElementById("personalGameNumbers"),
   clearPersonalGameBtn: document.getElementById("clearPersonalGameBtn"),
@@ -98,19 +89,29 @@ const els = {
 
 function getVisibleData() {
   if (!Array.isArray(appState.data) || !appState.data.length) return [];
-  const clamped = Math.max(0, Math.min(appState.visibleDrawIndex, appState.data.length - 1));
-  return appState.data.slice(0, clamped + 1);
+  const dates = getUniqueDates(appState.data);
+  const clampedDateIndex = Math.max(0, Math.min(appState.visibleDateIndex, dates.length - 1));
+  const activeDate = dates[clampedDateIndex];
+  if (!activeDate) return appState.data.slice();
+  return appState.data.filter((draw) => draw.fecha <= activeDate);
 }
 
-function isTimelineAtLatest() {
-  return appState.visibleDrawIndex >= appState.data.length - 1;
+function getUniqueDates(data = appState.data) {
+  return [...new Set((data || []).map((draw) => draw.fecha))];
 }
 
-function formatTimelineLabel(draw) {
-  if (!draw) return "--";
-  const [year, month, day] = draw.fecha.split("-");
-  const hourLabel = HOUR_LABELS[draw.hora] || draw.hora;
-  return `${day}/${month}/${year} ${hourLabel}`;
+function getCurrentTimelineDate() {
+  const dates = getUniqueDates(appState.data);
+  if (!dates.length) return "";
+  const clampedDateIndex = Math.max(0, Math.min(appState.visibleDateIndex, dates.length - 1));
+  appState.visibleDateIndex = clampedDateIndex;
+  return dates[clampedDateIndex] || "";
+}
+
+function formatTimelineLabel(dateKey) {
+  if (!dateKey) return "--";
+  const [year, month, day] = dateKey.split("-");
+  return `${day}/${month}/${year}`;
 }
 
 function renderTimelineControls() {
@@ -121,13 +122,14 @@ function renderTimelineControls() {
     els.timelineLabel.textContent = "--";
     return;
   }
+  const dates = getUniqueDates(appState.data);
   const minIndex = 0;
-  const maxIndex = appState.data.length - 1;
-  const clamped = Math.max(minIndex, Math.min(appState.visibleDrawIndex, maxIndex));
-  appState.visibleDrawIndex = clamped;
+  const maxIndex = dates.length - 1;
+  const clamped = Math.max(minIndex, Math.min(appState.visibleDateIndex, maxIndex));
+  appState.visibleDateIndex = clamped;
   els.prevDrawBtn.disabled = clamped <= minIndex;
   els.nextDrawBtn.disabled = clamped >= maxIndex;
-  els.timelineLabel.textContent = formatTimelineLabel(appState.data[clamped]);
+  els.timelineLabel.textContent = formatTimelineLabel(dates[clamped]);
 }
 
 function renderByTimeline() {
@@ -137,7 +139,7 @@ function renderByTimeline() {
   appState.analysis = analysis;
   renderAll(visibleData, analysis);
   const current = visibleData[visibleData.length - 1];
-  els.lastDrawHighlight.textContent = `Sorteo en vista: ${current.fecha} · ${HOUR_LABELS[current.hora] || current.hora} · ${current.numero}`;
+  els.lastDrawHighlight.textContent = `Último sorteo en vista: ${current.fecha} · ${HOUR_LABELS[current.hora] || current.hora} · ${current.numero}`;
   renderTimelineControls();
 }
 
@@ -158,18 +160,11 @@ function buildPromptMonthTransitionText(now = new Date()) {
 
 function updateGameUiLabels() {
   if (els.boardTitle) els.boardTitle.textContent = appState.gameConfig.boardTitle;
-  const title = appState.gameConfig.key === "diaria" ? "Analizador Loto Diaria" : "Analizador Juega 3";
-  document.title = `${title} Nicaragua · Analizador Inteligente`;
+  const monthCap = monthNameEs(getCurrentMonthKey()).replace(/^./, (s) => s.toUpperCase());
+  const title = `Loto diaria o juga tres del mes de ${monthCap}`;
+  document.title = `${title} · Nicaragua`;
   const appTitle = document.querySelector(".app-title");
   if (appTitle) appTitle.textContent = title;
-  if (els.monthChartTitle) {
-    const range = appState.gameConfig.key === "diaria" ? "00-99" : "000-999";
-    els.monthChartTitle.textContent = `Gráfica de comportamiento del mes (${range})`;
-  }
-  if (els.monthChartHint) {
-    const scale = appState.gameConfig.key === "diaria" ? "00-99" : "000-999";
-    els.monthChartHint.textContent = `Eje izquierdo: escala ${scale}. Eje inferior: día del mes y número entre paréntesis.`;
-  }
 }
 
 function updateGridStartOptions() {
@@ -743,8 +738,7 @@ function renderPersonalGameSection() {
 
 function getGridFilteredData(sourceData) {
   if (!Array.isArray(sourceData)) return [];
-  if (appState.hourFilter === "ALL") return sourceData;
-  return sourceData.filter((draw) => draw.hora === appState.hourFilter);
+  return sourceData;
 }
 
 function renderGrid(analysis) {
@@ -859,31 +853,6 @@ function interpolateHexColor(colorA, colorB, ratio) {
   return `#${toHex(mix(r1, r2))}${toHex(mix(g1, g2))}${toHex(mix(b1, b2))}`;
 }
 
-function renderAccordion(data) {
-  els.hourAccordion.innerHTML = "";
-  HOURS.forEach((hour) => {
-    const filtered = data.filter((d) => d.hora === hour).slice(-30).reverse();
-    const fragment = els.accordionTemplate.content.cloneNode(true);
-    const details = fragment.querySelector("details");
-    const summary = fragment.querySelector("summary");
-    const content = fragment.querySelector(".accordion-content");
-
-    summary.textContent = `${HOUR_LABELS[hour]} · ${filtered.length} sorteos`;
-    details.open = false;
-
-    filtered.forEach((draw) => {
-      const pill = document.createElement("span");
-      pill.className = "pill";
-      pill.textContent = `${draw.fecha} → ${draw.numero}`;
-      content.appendChild(pill);
-    });
-
-    if (!filtered.length) content.textContent = "Sin datos para esta hora.";
-
-    els.hourAccordion.appendChild(fragment);
-  });
-}
-
 function renderHistory(data) {
   els.historyBody.innerHTML = "";
   data.slice().reverse().slice(0, 200).forEach((draw) => {
@@ -921,101 +890,6 @@ function renderTop() {
   els.realtimeRecommendations.innerHTML = secuenciaProbable.map((n, idx) => `<li>${idx + 1}. ${n}</li>`).join("");
 }
 
-function renderMonthTrendChart(data) {
-  const canvas = els.monthTrendChart;
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  const draws = Array.isArray(data) ? data : [];
-  const width = canvas.clientWidth || canvas.parentElement?.clientWidth || 600;
-  const viewportHeight = window.innerHeight || 800;
-  const height = Math.max(140, Math.min(220, Math.floor(viewportHeight * 0.45)));
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(width * dpr);
-  canvas.height = Math.floor(height * dpr);
-  canvas.style.height = `${height}px`;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, width, height);
-
-  const chartMax = appState.gameConfig.max;
-  const leftPad = chartMax === 999 ? 48 : 40;
-  const rightPad = 12;
-  const topPad = 12;
-  const bottomPad = 24;
-  const plotWidth = Math.max(1, width - leftPad - rightPad);
-  const plotHeight = Math.max(1, height - topPad - bottomPad);
-  const toY = (value) => topPad + ((chartMax - value) / chartMax) * plotHeight;
-
-  ctx.fillStyle = "#0b1220";
-  ctx.fillRect(leftPad, topPad, plotWidth, plotHeight);
-
-  ctx.strokeStyle = "rgba(148, 163, 184, 0.25)";
-  ctx.lineWidth = 1;
-  const tickValues = chartMax === 999 ? [0, 200, 400, 600, 800, 999] : [0, 20, 40, 60, 80, 99];
-  tickValues.forEach((tick) => {
-    const y = toY(tick);
-    ctx.beginPath();
-    ctx.moveTo(leftPad, y);
-    ctx.lineTo(width - rightPad, y);
-    ctx.stroke();
-  });
-
-  ctx.fillStyle = "#cbd5e1";
-  ctx.font = "11px Inter, system-ui, sans-serif";
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  tickValues.slice().reverse().forEach((tick) => {
-    ctx.fillText(String(tick), leftPad - 6, toY(tick));
-  });
-
-  if (!draws.length) {
-    ctx.fillStyle = "#94a3b8";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("Sin sorteos para graficar.", leftPad + plotWidth / 2, topPad + plotHeight / 2);
-    return;
-  }
-
-  const xStep = draws.length > 1 ? plotWidth / (draws.length - 1) : 0;
-  ctx.strokeStyle = "#22d3ee";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  draws.forEach((draw, index) => {
-    const value = Math.min(chartMax, Math.max(0, Number(draw.numero)));
-    const x = leftPad + xStep * index;
-    const y = toY(value);
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-
-  const lastValue = Math.min(chartMax, Math.max(0, Number(draws[draws.length - 1].numero)));
-  const lastX = leftPad + xStep * (draws.length - 1);
-  const lastY = toY(lastValue);
-  ctx.fillStyle = "#f97316";
-  ctx.beginPath();
-  ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2);
-  ctx.fill();
-
-  const labelStep = Math.max(1, Math.ceil(draws.length / Math.max(4, Math.floor(plotWidth / 62))));
-  ctx.fillStyle = "#93c5fd";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.font = "10px Inter, system-ui, sans-serif";
-  draws.forEach((draw, index) => {
-    const isLast = index === draws.length - 1;
-    if (!isLast && index % labelStep !== 0) return;
-    const x = leftPad + xStep * index;
-    const day = String(Number(draw.fecha.split("-")[2] || "0")).padStart(2, "0");
-    const label = `${day}(${draw.numero})`;
-    ctx.save();
-    ctx.translate(x, height - bottomPad + 4);
-    ctx.rotate(-Math.PI / 5);
-    ctx.fillText(label, 0, 0);
-    ctx.restore();
-  });
-}
 
 function getSequenceTargetDate() {
   if (appState.sequenceTargetDate) return appState.sequenceTargetDate;
@@ -1026,12 +900,12 @@ function getSequenceDrawsForTargetDate() {
   const dateKey = getSequenceTargetDate();
   if (!dateKey) return { draws: [], dateKey, error: "No se pudo resolver la fecha objetivo para el trazo." };
   const drawsOnDate = appState.data.filter((draw) => draw.fecha === dateKey);
-  const draws = appState.hourFilter === "ALL" ? drawsOnDate : drawsOnDate.filter((draw) => draw.hora === appState.hourFilter);
+  const draws = drawsOnDate;
   if (draws.length < 2) {
     return {
       draws: [],
       dateKey,
-      error: "No hay suficientes sorteos para trazar (mínimo 2). Prueba otro día o cambia el filtro de hora.",
+      error: "No hay suficientes sorteos para trazar (mínimo 2). Prueba otro día.",
     };
   }
   return { draws, dateKey, error: "" };
@@ -1156,57 +1030,12 @@ function renderRealtimeTop(data, analysis) {
   void analysis;
 }
 
-function drawPyramid(numbers) {
-  const rows = [1, 2, 3, 4];
-  let idx = 0;
-  return rows
-    .map((size) => {
-      const rowNumbers = numbers.slice(idx, idx + size).join(" ");
-      idx += size;
-      return rowNumbers.padStart(Math.floor((20 + rowNumbers.length) / 2), " ");
-    })
-    .join("\n");
-}
-
-function renderAlgorithmPanels(analysis) {
-  const top10 = analysis.expansionModel.slice(0, 10).map((x) => x.n);
-  const pareto = analysis.expansionModel
-    .filter((x) => x.distance > 6 || x.freq === 0)
-    .slice(0, 5)
-    .map((x) => x.n)
-    .join(", ");
-
-  const cards = [
-    {
-      title: "Pirámide",
-      note: "Jerarquiza por oportunidad del algoritmo.",
-      shape: drawPyramid(top10),
-    },
-    {
-      title: "Teoría de juego (Pareto)",
-      note: "Grupo eficiente: balance entre números atrasados y baja repetición.",
-      shape: pareto || "Sin conjunto eficiente claro",
-    },
-  ];
-
-  els.algorithmPanels.innerHTML = "";
-  cards.forEach((card) => {
-    const el = document.createElement("article");
-    el.className = "algo-card";
-    el.innerHTML = `<div class="algo-title">${card.title}</div><div class="algo-note">${card.note}</div><div class="shape">${card.shape}</div>`;
-    els.algorithmPanels.appendChild(el);
-  });
-}
-
 function renderAll(data, analysis) {
   renderGrid(analysis);
-  renderMonthTrendChart(data);
   renderPersonalGameSection();
   renderTop();
   renderRealtimeTop(data, analysis);
   generatePlay(analysis);
-  renderAlgorithmPanels(analysis);
-  renderAccordion(data);
   renderHistory(data);
   renderTimelineControls();
 }
@@ -1219,25 +1048,19 @@ function setGridSortButtonLabel() {
 function showNoMonthlyData(monthKey) {
   const month = monthNameEs(monthKey);
   const monthCap = month.charAt(0).toUpperCase() + month.slice(1);
-  els.hourPanelTitle.textContent = `Panel por hora del mes de ${monthCap}`;
   els.historyTitle.textContent = `Historial del mes de ${monthCap}`;
   els.numberGrid.innerHTML = "";
-  renderMonthTrendChart([]);
   els.topRecommendations.innerHTML = "";
-  els.algorithmPanels.innerHTML = "";
-  els.hourAccordion.innerHTML = "";
   els.historyBody.innerHTML = `<tr><td colspan=\"4\">Aún no hay sorteos para ${monthCap}. Puedes consultar el mes anterior para estimar el primer número de ${monthCap}.</td></tr>`;
   els.generatedPlay.textContent = `Sin jugada sugerida por falta de sorteos de ${appState.gameConfig.label} en el mes actual.`;
   els.lastDrawHighlight.textContent = "Último sorteo: --";
-  appState.visibleDrawIndex = -1;
+  appState.visibleDateIndex = -1;
   renderTimelineControls();
 }
 
 function generatePlay(analysis) {
   const selected = appState.currentTopFive.length ? appState.currentTopFive : analysis.expansionModel.slice(0, 5).map((x) => x.n);
-  const nextDraw = getNextDrawInfo(new Date());
-  const daySuffix = nextDraw.isTomorrow ? " de mañana" : "";
-  els.generatedPlay.textContent = `Recomendado para las ${HOUR_LABELS[nextDraw.hourKey]}${daySuffix}: ${selected.join(", ")}.`;
+  els.generatedPlay.textContent = `Jugada sugerida: ${selected.join(", ")}.`;
 }
 
 async function refreshData(force = false) {
@@ -1268,11 +1091,15 @@ async function refreshData(force = false) {
     }
 
     const analysis = analyzeData(data);
-    appState = { ...appState, data, analysis, visibleDrawIndex: data.length - 1 };
+    const uniqueDates = getUniqueDates(data);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = getTodayDateKey(yesterday);
+    const defaultDateIndex = uniqueDates.includes(yesterdayKey) ? uniqueDates.indexOf(yesterdayKey) : uniqueDates.length - 1;
+    appState = { ...appState, data, analysis, visibleDateIndex: defaultDateIndex };
     const monthCap = monthNameEs(monthKey).replace(/^./, (s) => s.toUpperCase());
-    els.hourPanelTitle.textContent = `Panel por hora del mes de ${monthCap}`;
     els.historyTitle.textContent = `Historial del mes de ${monthCap}`;
-    appState.sequenceTargetDate = getTodayDateKey(new Date());
+    appState.sequenceTargetDate = getCurrentTimelineDate();
     resetSequence();
     if (els.sequenceStatus) els.sequenceStatus.textContent = `Trazo listo para ${appState.sequenceTargetDate}.`;
     renderByTimeline();
@@ -1280,7 +1107,7 @@ async function refreshData(force = false) {
     const last = data[data.length - 1];
     const updatedAt = new Date().toLocaleString();
     els.lastDrawHighlight.textContent = `Último sorteo: ${last.fecha} · ${HOUR_LABELS[last.hora] || last.hora} · ${last.numero}`;
-    els.status.textContent = `OK · ${data.length} sorteos de ${gameLabel} cargados (${monthKey}) · ${updatedAt}`;
+    els.status.textContent = `${data.length} sorteos de ${gameLabel} cargados (${monthKey}) · ${updatedAt}`;
   } catch (error) {
     console.error(error);
     els.status.textContent = `Error: ${error.message}`;
@@ -1353,27 +1180,22 @@ els.drawSequenceBtn?.addEventListener("click", () => {
 els.resetSequenceBtn?.addEventListener("click", () => {
   resetSequence();
 });
-els.hourFilterSelect?.addEventListener("change", (event) => {
-  const selectedHour = event.target.value;
-  const allowed = new Set(["ALL", ...HOURS]);
-  appState.hourFilter = allowed.has(selectedHour) ? selectedHour : "ALL";
-  if (appState.analysis) renderGrid(appState.analysis);
-});
 els.prevDrawBtn?.addEventListener("click", () => {
-  if (appState.visibleDrawIndex <= 0) return;
-  appState.visibleDrawIndex -= 1;
-  const activeDraw = appState.data[appState.visibleDrawIndex];
-  if (activeDraw?.fecha) appState.sequenceTargetDate = activeDraw.fecha;
-  resetSequence();
+  if (appState.visibleDateIndex <= 0) return;
+  appState.visibleDateIndex -= 1;
+  appState.sequenceTargetDate = getCurrentTimelineDate();
+  const keepActiveSequence = appState.activeSequenceDraws.length > 0;
   renderByTimeline();
+  if (keepActiveSequence) applySequenceRange();
 });
 els.nextDrawBtn?.addEventListener("click", () => {
-  if (appState.visibleDrawIndex >= appState.data.length - 1) return;
-  appState.visibleDrawIndex += 1;
-  const activeDraw = appState.data[appState.visibleDrawIndex];
-  if (activeDraw?.fecha) appState.sequenceTargetDate = activeDraw.fecha;
-  resetSequence();
+  const dates = getUniqueDates(appState.data);
+  if (appState.visibleDateIndex >= dates.length - 1) return;
+  appState.visibleDateIndex += 1;
+  appState.sequenceTargetDate = getCurrentTimelineDate();
+  const keepActiveSequence = appState.activeSequenceDraws.length > 0;
   renderByTimeline();
+  if (keepActiveSequence) applySequenceRange();
 });
 
 document.addEventListener("change", (event) => {
@@ -1397,7 +1219,6 @@ document.addEventListener("click", (event) => {
   closeGridTooltip();
 });
 window.addEventListener("resize", () => {
-  if (appState.analysis) renderMonthTrendChart(getVisibleData());
   renderSequenceOverlay();
 });
 
@@ -1422,17 +1243,5 @@ appState.personalGameNumbers = loadPersonalGameNumbers();
 const savedView = localStorage.getItem(VIEW_MODE_KEY) || "default";
 appState.viewMode = ["default", "colorSequence", "numberSequence"].includes(savedView) ? savedView : "default";
 if (els.viewModeSelect) els.viewModeSelect.value = appState.viewMode;
-if (els.hourFilterSelect) els.hourFilterSelect.value = appState.hourFilter;
-
-
-
-function applyHeaderScrollEffect() {
-  if (!els.appHeader) return;
-  const compact = window.scrollY > 28;
-  els.appHeader.classList.toggle("is-compact", compact);
-}
-
-window.addEventListener("scroll", applyHeaderScrollEffect, { passive: true });
-applyHeaderScrollEffect();
 refreshData();
 setGridSortButtonLabel();
