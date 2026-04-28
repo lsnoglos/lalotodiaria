@@ -39,6 +39,12 @@ const GAME_SCHEDULE = {
   "6PM": { hour: 18, minute: 0, label: "6:00pm" },
   "9PM": { hour: 21, minute: 0, label: "9:00pm" },
 };
+const TODAY_GAME_LABELS = {
+  "12PM": "12md",
+  "3PM": "3pm",
+  "6PM": "6pm",
+  "9PM": "9pm",
+};
 
 let appState = {
   selectedGame: "diaria",
@@ -156,8 +162,7 @@ function renderByTimeline() {
   const analysis = analyzeData(visibleData);
   appState.analysis = analysis;
   renderAll(visibleData, analysis);
-  const current = visibleData[visibleData.length - 1];
-  els.lastDrawHighlight.textContent = `Último sorteo en vista: ${current.fecha} · ${HOUR_LABELS[current.hora] || current.hora} · ${current.numero}`;
+  renderTodayGamesHighlight(appState.data);
   renderTimelineControls();
 }
 
@@ -1031,6 +1036,32 @@ function getTodayDateKey(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
+function hasTodayGamePassed(hourKey, now = new Date()) {
+  const slot = GAME_SCHEDULE[hourKey];
+  if (!slot) return false;
+  const slotDate = new Date(now);
+  slotDate.setHours(slot.hour, slot.minute, 0, 0);
+  return now.getTime() >= slotDate.getTime();
+}
+
+function renderTodayGamesHighlight(data = appState.data) {
+  const now = new Date();
+  const todayKey = getTodayDateKey(now);
+  const todayByHour = Object.fromEntries(
+    (Array.isArray(data) ? data : [])
+      .filter((draw) => draw.fecha === todayKey)
+      .map((draw) => [draw.hora, draw.numero]),
+  );
+
+  const summary = HOURS.map((hourKey) => {
+    const label = TODAY_GAME_LABELS[hourKey] || hourKey.toLowerCase();
+    const value = hasTodayGamePassed(hourKey, now) ? (todayByHour[hourKey] || "-") : "-";
+    return `${label}: ${value}`;
+  }).join(", ");
+
+  els.lastDrawHighlight.textContent = `Juegos de hoy: ${summary}`;
+}
+
 function buildRealtimeSuggestions(data, analysis, limit = 2) {
   if (!Array.isArray(data) || data.length < 2 || !analysis) return [];
 
@@ -1103,7 +1134,7 @@ function showNoMonthlyData(monthKey) {
   els.topRecommendations.innerHTML = "";
   els.historyBody.innerHTML = `<tr><td colspan=\"4\">Aún no hay sorteos para ${monthCap}. Puedes consultar el mes anterior para estimar el primer número de ${monthCap}.</td></tr>`;
   els.generatedPlay.textContent = `Sin jugada sugerida por falta de sorteos de ${appState.gameConfig.label} en el mes seleccionado.`;
-  els.lastDrawHighlight.textContent = "Último sorteo: --";
+  renderTodayGamesHighlight([]);
   appState.visibleDateIndex = -1;
   renderTimelineControls();
 }
@@ -1154,9 +1185,8 @@ async function refreshData(force = false) {
     if (els.sequenceStatus) els.sequenceStatus.textContent = `Trazo listo para ${appState.sequenceTargetDate}.`;
     renderByTimeline();
 
-    const last = data[data.length - 1];
     const updatedAt = new Date().toLocaleString();
-    els.lastDrawHighlight.textContent = `Último sorteo: ${last.fecha} · ${HOUR_LABELS[last.hora] || last.hora} · ${last.numero}`;
+    renderTodayGamesHighlight(data);
     els.status.textContent = `${data.length} sorteos de ${gameLabel} cargados (${monthKey}) · ${updatedAt}`;
   } catch (error) {
     console.error(error);
